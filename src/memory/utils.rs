@@ -1,5 +1,3 @@
-use std::io;
-
 pub fn parse_pattern(pattern: &str) -> Vec<Option<u8>> {
     pattern
         .split_whitespace()

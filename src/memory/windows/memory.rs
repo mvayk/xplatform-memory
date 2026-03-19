@@ -1,9 +1,5 @@
-use std::io;
-
-use crate::memory::platform;
-
 #[cfg(target_os = "windows")]
-platform {
+pub mod platform {
     use std::{io, mem};
     use winapi::shared::minwindef::{DWORD, FALSE, HMODULE, MAX_PATH};
     use winapi::um::handleapi::CloseHandle;
@@ -15,10 +11,68 @@ platform {
     use winapi::um::winnt::{
         HANDLE, PROCESS_ALL_ACCESS, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
     };
+    pub fn find_pid(name: &str) -> io::Result<i32> {
+        unsafe {
+            let mut pids: Vec<DWORD> = vec![0u32; 1024];
+            let mut bytes_returned: DWORD = 0;
+            if EnumProcesses(
+                pids.as_mut_ptr(),
+                (pids.len() * mem::size_of::<DWORD>()) as DWORD,
+                &mut bytes_returned,
+            ) == FALSE
+            {
+                return Err(io::Error::last_os_error());
+            }
+            let count = bytes_returned as usize / mem::size_of::<DWORD>();
+            for &pid in &pids[..count] {
+                let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+                if handle.is_null() {
+                    continue;
+                }
+                let mut module: HMODULE = std::ptr::null_mut();
+                let mut cb_needed: DWORD = 0;
+                if EnumProcessModules(
+                    handle,
+                    &mut module,
+                    mem::size_of::<HMODULE>() as DWORD,
+                    &mut cb_needed,
+                ) != FALSE
+                {
+                    let mut filename = vec![0i8; MAX_PATH];
+                    GetModuleFileNameExA(handle, module, filename.as_mut_ptr(), MAX_PATH as DWORD);
+                    let proc_name = std::ffi::CStr::from_ptr(filename.as_ptr())
+                        .to_string_lossy()
+                        .to_lowercase();
+                    let basename = std::path::Path::new(proc_name.as_str())
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    if basename == name.to_lowercase() {
+                        CloseHandle(handle);
+                        return Ok(pid as i32);
+                    }
+                }
+                CloseHandle(handle);
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Failed to find process",
+        ))
+    }
 
     pub struct ProcessPlatform {
         pub pid: i32,
         handle: HANDLE,
+    }
+
+    impl Drop for ProcessPlatform {
+        fn drop(&mut self) {
+            unsafe {
+                CloseHandle(self.handle);
+            }
+        }
     }
 
     impl ProcessPlatform {
@@ -27,15 +81,7 @@ platform {
             if handle.is_null() {
                 return Err(io::Error::last_os_error());
             }
-            Ok(Process { pid, handle })
-        }
-
-        impl Drop for Platform {
-            fn drop(&mut self) {
-                unsafe {
-                    CloseHandle(self.handle);
-                }
-            }
+            Ok(ProcessPlatform { pid, handle })
         }
 
         fn get_module_handle(&self, module: &str) -> io::Result<HMODULE> {
@@ -53,7 +99,7 @@ platform {
                     return Err(io::Error::last_os_error());
                 }
 
-                let count = cb_needed as usize / mem::size_of::<HMODULEL>();
+                let count = cb_needed as usize / mem::size_of::<HMODULE>();
                 for &hmodule in &modules[..count] {
                     let mut file_name = vec![0i8; MAX_PATH];
                     GetModuleFileNameExA(
@@ -81,6 +127,10 @@ platform {
             ))
         }
 
+        pub fn get_module_base(&self, module: &str) -> io::Result<usize> {
+            Ok(self.get_module_handle(module)? as usize)
+        }
+
         pub fn get_module_size(&self, module: &str) -> io::Result<usize> {
             unsafe {
                 let hmodule = self.get_module_handle(module)?;
@@ -92,18 +142,20 @@ platform {
                     mem::size_of::<MODULEINFO>() as DWORD,
                 );
                 Ok(info.SizeOfImage as usize)
-            };
-            Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Failed to get module size",
-            ))
+            }
         }
 
         pub fn read_memory_range(&self, addr: usize, size: usize) -> io::Result<Vec<u8>> {
             let mut buf = vec![0u8; size];
             let mut bytes_read = 0usize;
             let result = unsafe {
-                ReadProcessMemory(self.handle, addr as *const _, buf.as_mut_ptr() as * mut _, size, &mut bytes_read)
+                ReadProcessMemory(
+                    self.handle,
+                    addr as *const _,
+                    buf.as_mut_ptr() as *mut _,
+                    size,
+                    &mut bytes_read,
+                )
             };
             if result == FALSE {
                 return Err(io::Error::last_os_error());

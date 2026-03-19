@@ -1,7 +1,11 @@
+//use crate::utils::*;
 use std::io;
 
-use crate::memory::*;
-use crate::utils::*;
+#[cfg(target_os = "windows")]
+use crate::windows::memory::platform;
+
+#[cfg(target_os = "linux")]
+use crate::linux::memory::platform;
 
 pub struct Process {
     pub pid: i32,
@@ -11,7 +15,7 @@ pub struct Process {
 impl Process {
     pub fn new(name: &str) -> io::Result<Self> {
         let pid = platform::find_pid(name)?;
-        let inner = platform::PlatformProcess::new(pid)?;
+        let inner = platform::ProcessPlatform::new(pid)?;
         Ok(Process { pid, inner })
     }
 

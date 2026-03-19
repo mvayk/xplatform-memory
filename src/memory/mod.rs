@@ -1,10 +1,7 @@
-#[cfg(target_os = "windows")]
-pub use windows::platform;
+pub mod utils;
+pub mod wrapper;
 
 #[cfg(target_os = "linux")]
-pub use linux::platform;
-
 pub mod linux;
-pub mod utils;
+#[cfg(target_os = "windows")]
 pub mod windows;
-pub mod wrapper;
