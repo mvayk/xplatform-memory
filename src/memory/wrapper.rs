@@ -38,4 +38,8 @@ impl Process {
     pub fn write_memory<T: Copy>(&self, address: usize, value: &T) -> io::Result<()> {
         self.inner.write_memory(address, value)
     }
+
+    pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
+        self.inner.allocate_memory(size)
+    }
 }

@@ -132,5 +132,7 @@ pub mod platform {
             }
             Ok(())
         }
+
+        /* TODO: add allocate memory, signature scanning, protect memory */
     }
 }

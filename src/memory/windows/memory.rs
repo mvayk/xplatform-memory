@@ -181,6 +181,7 @@ pub mod platform {
             }
             Ok(buffer)
         }
+
         pub fn write_memory<T: Copy>(&self, address: usize, value: &T) -> io::Result<()> {
             let mut bytes_written = 0usize;
             let result = unsafe {
@@ -196,6 +197,27 @@ pub mod platform {
                 return Err(io::Error::last_os_error());
             }
             Ok(())
+        }
+
+        pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
+            use winapi::um::memoryapi::VirtualAllocEx;
+            use winapi::um::winnt::{MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE};
+
+            let addr = unsafe {
+                VirtualAllocEx(
+                    self.handle,
+                    std::ptr::null_mut(),
+                    size,
+                    MEM_COMMIT | MEM_RESERVE,
+                    PAGE_EXECUTE_READWRITE,
+                )
+            };
+
+            if addr.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+
+            Ok(addr as usize)
         }
     }
 }

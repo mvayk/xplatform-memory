@@ -29,6 +29,31 @@ fn main() -> io::Result<()> {
             "FPS cap set to {:?}",
             process.read_memory::<f32>(max_fps_address)?
         );
+
+        /* semi fov fix
+        func signature:
+        int __userpurge sub_117BADC0@<xmm0>(int this@<ecx>)
+
+        allocate memory and write fov value to allocation because xmm0 doesnt support being written to directly
+        and then override original instructions that asscess fov with new instructions
+        */
+        let cave_addr = process.allocate_memory(4)?;
+        process.write_memory(cave_addr, &120.0f32)?;
+
+        let cave_bytes = (cave_addr as u32).to_le_bytes();
+        let patch: [u8; 9] = [
+            0xF3,
+            0x0F,
+            0x10,
+            0x05, // MOVSS xmm0, [imm32]
+            cave_bytes[0],
+            cave_bytes[1],
+            cave_bytes[2],
+            cave_bytes[3],
+            0xC3, // RET
+        ];
+
+        process.write_memory(0x117BADC0, &patch)?;
     } else {
         panic!("I DONT KNOW");
     }
