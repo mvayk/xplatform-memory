@@ -7,8 +7,8 @@ use crate::wrapper::*;
 mod games;
 
 fn main() -> io::Result<()> {
-    let tfoc: (&str, bool) = ("TFOC.exe", false);
-    let twfc: (&str, bool) = ("TWFC_steamless.exe", true);
+    let tfoc: (&str, bool) = ("TFOC.exe", true);
+    let twfc: (&str, bool) = ("TWFC_steamless.exe", false);
 
     if tfoc.1 == true {
         games::tfoc::patch(tfoc.0);

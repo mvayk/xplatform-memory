@@ -22,6 +22,7 @@ pub fn patch(process_name: &str) -> io::Result<()> {
 
     /* tfoc fps unlocker thx for magical address */
     let max_fps_address = 0x12A03F30usize;
+    println!("{:?}", process.read_memory::<u32>(max_fps_address)?);
 
     process.write_memory(max_fps_address, &260.0f32)?;
     println!(
