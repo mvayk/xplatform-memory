@@ -1,4 +1,4 @@
-//use crate::utils::*;
+use crate::utils::*;
 use std::io;
 
 #[cfg(target_os = "windows")]
@@ -41,5 +41,17 @@ impl Process {
 
     pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
         self.inner.allocate_memory(size)
+    }
+
+    pub fn scan_module(&self, module: &str, pattern: &str) -> io::Result<usize> {
+        let module_base = self.get_module_base(module)?;
+        let module_size = self.get_module_size(module)?;
+        let memory = self.read_memory_range(module_base, module_size)?;
+        let parsed = parse_pattern(pattern);
+
+        pattern_scan_all(&memory, &parsed)
+            .first()
+            .map(|&offset| module_base + offset)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Pattern not found"))
     }
 }
