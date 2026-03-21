@@ -39,9 +39,9 @@ impl Process {
         self.inner.write_memory(address, value)
     }
 
-    pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
+    /* pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
         self.inner.allocate_memory(size)
-    }
+    } */
 
     pub fn scan_module(&self, module: &str, pattern: &str) -> io::Result<usize> {
         let module_base = self.get_module_base(module)?;

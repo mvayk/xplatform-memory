@@ -152,18 +152,62 @@ pub mod platform {
         }
 
         pub fn write_memory<T: Copy>(&self, address: usize, value: &T) -> io::Result<()> {
+            let data = unsafe {
+                std::slice::from_raw_parts(value as *const T as *const u8, mem::size_of::<T>())
+            };
+
             let local_iov = iovec {
-                iov_base: value as *const _ as *mut _,
-                iov_len: mem::size_of::<T>(),
+                iov_base: data.as_ptr() as *mut _,
+                iov_len: data.len(),
             };
             let remote_iov = iovec {
                 iov_base: address as *mut _,
-                iov_len: mem::size_of::<T>(),
+                iov_len: data.len(),
             };
+
             let result = unsafe { process_vm_writev(self.pid, &local_iov, 1, &remote_iov, 1, 0) };
+
             if result == -1 {
-                return Err(io::Error::last_os_error());
+                let err = io::Error::last_os_error();
+                if err.raw_os_error() == Some(14) {
+                    return self.write_memory_ptrace(address, data);
+                }
+                return Err(err);
             }
+
+            Ok(())
+        }
+
+        fn write_memory_ptrace(&self, address: usize, data: &[u8]) -> io::Result<()> {
+            let pid = Pid::from_raw(self.pid);
+            let mut offset = 0;
+
+            ptrace::attach(pid).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
+            waitpid(pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            while offset < data.len() {
+                let addr = (address + offset) as *mut libc::c_void;
+                let remaining = std::cmp::min(8, data.len() - offset);
+
+                let mut word: i64 = if remaining < 8 {
+                    ptrace::read(pid, addr).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                } else {
+                    0
+                };
+
+                let word_bytes = word.to_ne_bytes();
+                let mut new_word = word_bytes;
+                new_word[..remaining].copy_from_slice(&data[offset..offset + remaining]);
+                word = i64::from_ne_bytes(new_word);
+
+                ptrace::write(pid, addr, word)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+                offset += remaining;
+            }
+
+            ptrace::detach(pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
             Ok(())
         }
         pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {
@@ -203,7 +247,11 @@ pub mod platform {
         }
 
         /* TODO: signature scanning, protect memory, */
-        pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
+
+        /* an attempt at allocating memory. doesnt work because i dont know 14 apparently*/
+        /* for twfc ill just write shellcode to memory in some cave its just 4 bytes anyways */
+        /*pub*/
+        fn allocate_memory(&self, size: usize) -> io::Result<usize> {
             let bitpenis = get_process_bitness(self.pid)?;
 
             let target_pid = Pid::from_raw(self.pid);
@@ -226,114 +274,80 @@ pub mod platform {
             Ok(allocated_addr)
         }
 
-        fn allocate_64bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
-            let regs =
+        fn allocate_32bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
+            let original_regs =
                 ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-            let original_regs = regs;
+            let mut regs = original_regs;
 
-            let mut new_regs = regs;
-            new_regs.rax = 9;
-            new_regs.rdi = 0;
-            new_regs.rsi = size as u64;
-            new_regs.rdx = (PROT_READ | PROT_WRITE) as u64;
-            new_regs.r10 = (MAP_PRIVATE | MAP_ANONYMOUS) as u64;
-            new_regs.r8 = (-1i64) as u64;
-            new_regs.r9 = 0;
+            regs.rax = 192; // SYS_mmap2
+            regs.rbx = 0; // addr = NULL
+            regs.rcx = size as u64; // length
+            regs.rdx = 0x7; // PROT_READ | PROT_WRITE | PROT_EXEC
+            regs.rsi = 0x22; // MAP_PRIVATE | MAP_ANONYMOUS
+            regs.rdi = (-1i32) as u64; // fd = -1
+            regs.rbp = 0; // offset = 0
 
-            ptrace::setregs(target_pid, new_regs)
+            ptrace::setregs(target_pid, regs)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-            let original_instruction = ptrace::read(target_pid, regs.rip as ptrace::AddressType)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            unsafe {
-                ptrace::write(target_pid, regs.rip as ptrace::AddressType, 0x050f)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            }
+            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             let result_regs =
                 ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            let allocated_addr = result_regs.rax as usize;
-
-            unsafe {
-                ptrace::write(
-                    target_pid,
-                    regs.rip as ptrace::AddressType,
-                    original_instruction,
-                )
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            }
 
             ptrace::setregs(target_pid, original_regs)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-            if allocated_addr as i64 == -1 || allocated_addr as i64 > -4096 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "mmap failed in target process",
-                ));
+            let addr = (result_regs.rax & 0xFFFFFFFF) as usize;
+
+            if addr > 0xFFFF0000 {
+                return Err(io::Error::new(io::ErrorKind::Other, "mmap failed"));
             }
 
-            Ok(allocated_addr)
+            Ok(addr)
         }
 
-        fn allocate_32bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
-            let regs =
+        fn allocate_64bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
+            let original_regs =
                 ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-            let original_regs = regs;
+            let mut regs = original_regs;
 
-            let mut new_regs = regs;
-            new_regs.rax = 192;
-            new_regs.rbx = 0;
-            new_regs.rcx = size as u64;
-            new_regs.rdx = (PROT_READ | PROT_WRITE) as u64;
-            new_regs.rsi = (MAP_PRIVATE | MAP_ANONYMOUS) as u64;
-            new_regs.rdi = (-1i64) as u64;
-            new_regs.rbp = 0;
+            regs.rax = 9; // SYS_mmap
+            regs.rdi = 0; // addr = NULL
+            regs.rsi = size as u64; // length
+            regs.rdx = 0x7; // PROT_READ | PROT_WRITE | PROT_EXEC
+            regs.r10 = 0x22; // MAP_PRIVATE | MAP_ANONYMOUS
+            regs.r8 = (-1i64) as u64; // fd = -1
+            regs.r9 = 0; // offset = 0
 
-            ptrace::setregs(target_pid, new_regs)
+            ptrace::setregs(target_pid, regs)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-            let original_instruction = ptrace::read(target_pid, regs.rip as ptrace::AddressType)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            unsafe {
-                ptrace::write(target_pid, regs.rip as ptrace::AddressType, 0x80cd)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            }
+            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             let result_regs =
                 ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            let allocated_addr = result_regs.rax as usize;
-
-            unsafe {
-                ptrace::write(
-                    target_pid,
-                    regs.rip as ptrace::AddressType,
-                    original_instruction,
-                )
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            }
 
             ptrace::setregs(target_pid, original_regs)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-            if allocated_addr as i32 == -1 || (allocated_addr as i32) > -4096 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "mmap failed in target process",
-                ));
+            let addr = result_regs.rax as usize;
+
+            if addr > 0xFFFFFFFFFFFF0000 {
+                return Err(io::Error::new(io::ErrorKind::Other, "mmap failed"));
             }
 
-            Ok(allocated_addr)
+            Ok(addr)
         }
     }
 }

@@ -37,11 +37,15 @@ pub fn patch(process_name: &str) -> io::Result<()> {
     and then override original instructions that asscess fov with new instructions
 
     only issue is that for some reason when you zoom in you zoom out?
+
+    allocating memory on linux is apparently very hard so instead we are going to override 4 bytes somewhere in the executable instead of allocating 4 bytes
+    apparently apparently when wine setups .text section it is only readable and executable and for some reason not writable. so we gotta ptrace attach and then write
     */
-    let cave_addr = process.allocate_memory(4)?;
+    /*let allocation_addr = process.allocate_memory(4)?; */
+    let cave_addr = 0x12A3CCD0;
     let fov = calculate_fov(
         process.get_aspect_ratio("Transformers: War for Cybertron")?,
-        10.0f32,
+        20.0f32,
     )?;
     process.write_memory(cave_addr, &fov)?;
 
