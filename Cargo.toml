@@ -13,4 +13,5 @@ winapi = { version = "0.3", features = [
   "processthreadsapi",
   "psapi",
   "winnt",
+  "winuser",
 ] }

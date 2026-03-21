@@ -1,7 +1,9 @@
 #[cfg(target_os = "windows")]
 pub mod platform {
+    use std::ffi::CString;
     use std::{io, mem};
     use winapi::shared::minwindef::{DWORD, FALSE, HMODULE, MAX_PATH};
+    use winapi::shared::windef::RECT;
     use winapi::um::handleapi::CloseHandle;
     use winapi::um::memoryapi::{ReadProcessMemory, WriteProcessMemory};
     use winapi::um::processthreadsapi::OpenProcess;
@@ -11,6 +13,8 @@ pub mod platform {
     use winapi::um::winnt::{
         HANDLE, PROCESS_ALL_ACCESS, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
     };
+    use winapi::um::winuser::{FindWindowA, GetClientRect};
+
     pub fn find_pid(name: &str) -> io::Result<i32> {
         unsafe {
             let mut pids: Vec<DWORD> = vec![0u32; 1024];
@@ -218,6 +222,21 @@ pub mod platform {
             }
 
             Ok(addr as usize)
+        }
+
+        pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {
+            unsafe {
+                let title = CString::new(window_title).unwrap();
+                let hwnd = FindWindowA(std::ptr::null(), title.as_ptr());
+                if hwnd.is_null() {
+                    return Ok(16.0 / 9.0);
+                }
+                let mut rect: RECT = std::mem::zeroed();
+                GetClientRect(hwnd, &mut rect);
+                let w = (rect.right - rect.left) as f32;
+                let h = (rect.bottom - rect.top) as f32;
+                Ok(if h == 0.0 { 16.0 / 9.0 } else { w / h })
+            }
         }
     }
 }

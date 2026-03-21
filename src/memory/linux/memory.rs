@@ -132,7 +132,42 @@ pub mod platform {
             }
             Ok(())
         }
+        pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {
+            let output = Command::new("xdotool")
+                .args([
+                    "search",
+                    "--name",
+                    window_title,
+                    "getwindowgeometry",
+                    "--shell",
+                    "%1",
+                ])
+                .output();
 
-        /* TODO: add allocate memory, signature scanning, protect memory */
+            if let Ok(out) = output {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let mut w: Option<f32> = None;
+                let mut h: Option<f32> = None;
+
+                for line in text.lines() {
+                    if let Some(val) = line.strip_prefix("WIDTH=") {
+                        w = val.trim().parse().ok();
+                    } else if let Some(val) = line.strip_prefix("HEIGHT=") {
+                        h = val.trim().parse().ok();
+                    }
+                }
+
+                if let (Some(w), Some(h)) = (w, h) {
+                    if h > 0.0 {
+                        return Ok(w / h);
+                    }
+                }
+            }
+
+            /* fallback */
+            Ok(16.0 / 9.0)
+        }
+
+        /* TODO: add allocate memory, signature scanning, protect memory, aspect ratio */
     }
 }

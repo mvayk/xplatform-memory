@@ -54,4 +54,8 @@ impl Process {
             .map(|&offset| module_base + offset)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Pattern not found"))
     }
+
+    pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {
+        self.inner.get_aspect_ratio(window_title)
+    }
 }

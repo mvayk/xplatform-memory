@@ -3,6 +3,16 @@ use std::io;
 use crate::memory::*;
 use crate::wrapper::*;
 
+const DEFAULT_ASPECT: f32 = 1.777777791;
+const BASE_FOV: f32 = 90.0;
+
+fn calculate_fov(aspect_ratio: f32, additional_fov: f32) -> io::Result<f32> {
+    let ratio = aspect_ratio / DEFAULT_ASPECT;
+    let half_fov = (BASE_FOV / 2.0).to_radians();
+    let corrected = 2.0 * (half_fov.tan() * ratio).atan();
+    Ok(corrected.to_degrees() + additional_fov)
+}
+
 pub fn patch(process_name: &str) -> io::Result<()> {
     let process = Process::new(process_name)?;
     println!("PID: {}", process.pid);
@@ -25,9 +35,15 @@ pub fn patch(process_name: &str) -> io::Result<()> {
 
     allocate memory and write fov value to allocation because xmm0 doesnt support being written to directly
     and then override original instructions that asscess fov with new instructions
+
+    only issue is that for some reason when you zoom in you zoom out?
     */
-    /* let cave_addr = process.allocate_memory(4)?;
-    process.write_memory(cave_addr, &120.0f32)?;
+    let cave_addr = process.allocate_memory(4)?;
+    let fov = calculate_fov(
+        process.get_aspect_ratio("Transformers: War for Cybertron")?,
+        10.0f32,
+    )?;
+    process.write_memory(cave_addr, &fov)?;
 
     let cave_bytes = (cave_addr as u32).to_le_bytes();
     let patch: [u8; 9] = [
@@ -42,22 +58,7 @@ pub fn patch(process_name: &str) -> io::Result<()> {
         0xC3, // RET
     ];
 
-    process.write_memory(0x117BADC0, &patch)?; */
-
-    /* twfc widescreen patch signature */
-    let pattern: &str = "
-        8B ?? ?? 89 ?? ?? ?? ?? ?? D9 ?? ?? D9 ?? ?? ?? ?? ?? C3
-    ";
-
-    let signature = process.scan_module(process_name, pattern)?;
-    let fov_address = signature + 0xC;
-    let cave_addr = process.allocate_memory(4)?;
-
-    process.write_memory(cave_addr, &120.0f32)?;
-    let mut patch: [u8; 6] = [0xD9, 0x05, 0, 0, 0, 0];
-    patch[2..].copy_from_slice(&(cave_addr as u32).to_le_bytes());
-
-    process.write_memory(fov_address, &patch)?;
+    process.write_memory(0x117BADC0, &patch)?;
 
     Ok(())
 }
