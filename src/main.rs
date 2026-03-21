@@ -5,7 +5,6 @@ use crate::memory::*;
 use crate::wrapper::*;
 
 mod games;
-use crate::games::*;
 
 fn main() -> io::Result<()> {
     let tfoc: (&str, bool) = ("TFOC.exe", false);

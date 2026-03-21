@@ -1,22 +1,56 @@
-use std::io;
-
 #[cfg(target_os = "linux")]
+
 pub mod platform {
-    use libc::{iovec, process_vm_readv, process_vm_writev};
+    use libc::{
+        MAP_ANONYMOUS, MAP_FAILED, MAP_PRIVATE, PROT_READ, PROT_WRITE, iovec, mmap, munmap,
+        process_vm_readv, process_vm_writev, user_regs_struct,
+    };
+    use nix::sys::ptrace;
+    use nix::sys::wait::waitpid;
+    use nix::unistd::Pid;
     use std::fs;
     use std::io;
     use std::mem;
+    use std::process::Command;
 
+    /* need this for allocate_memory when saving & modifying registers */
+    fn get_process_bitness(pid: i32) -> io::Result<usize> {
+        let exe_path = format!("/proc/{}/exe", pid);
+        let mut file = fs::File::open(&exe_path)?;
+
+        let mut elf_header = [0u8; 5];
+        std::io::Read::read_exact(&mut file, &mut elf_header)?;
+
+        if &elf_header[0..4] != b"\x7fELF" {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Not an elf"));
+        }
+
+        match elf_header[4] {
+            1 => Ok(32),
+            2 => Ok(64),
+            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown elf")),
+        }
+    }
+
+    /* old comm method truncates actual name of process at 15 characters for some reason
+    resulting in unable to find process if the process name is longer than 15 */
     pub fn find_pid(name: &str) -> io::Result<i32> {
         for entry in fs::read_dir("/proc")? {
             let entry = entry?;
             let filename = entry.file_name();
             let filename = filename.to_string_lossy();
             if let Ok(pid) = filename.parse::<i32>() {
-                let comm_path = format!("/proc/{}/comm", pid);
-                if let Ok(proc_name) = fs::read_to_string(comm_path) {
-                    if proc_name.trim() == name {
-                        return Ok(pid);
+                let cmdline_path = format!("/proc/{}/cmdline", pid);
+                if let Ok(cmdline) = fs::read_to_string(cmdline_path) {
+                    if let Some(exe_path) = cmdline.split('\0').next() {
+                        let exe_name = exe_path
+                            .rsplit(|c| c == '/' || c == '\\')
+                            .next()
+                            .unwrap_or(exe_path);
+
+                        if exe_name.eq_ignore_ascii_case(name) {
+                            return Ok(pid);
+                        }
                     }
                 }
             }
@@ -27,13 +61,13 @@ pub mod platform {
         ))
     }
 
-    pub struct PlatformProcess {
+    pub struct ProcessPlatform {
         pub pid: i32,
     }
 
-    impl PlatformProcess {
+    impl ProcessPlatform {
         pub fn new(pid: i32) -> io::Result<Self> {
-            Ok(PlatformProcess { pid })
+            Ok(ProcessPlatform { pid })
         }
 
         pub fn get_module_base(&self, module: &str) -> io::Result<usize> {
@@ -168,6 +202,138 @@ pub mod platform {
             Ok(16.0 / 9.0)
         }
 
-        /* TODO: add allocate memory, signature scanning, protect memory, aspect ratio */
+        /* TODO: signature scanning, protect memory, */
+        pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
+            let bitpenis = get_process_bitness(self.pid)?;
+
+            let target_pid = Pid::from_raw(self.pid);
+
+            ptrace::attach(target_pid)
+                .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
+
+            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            /* much better way to have down this :\ */
+            let allocated_addr = if bitpenis == 32 {
+                self.allocate_32bit(target_pid, size)?
+            } else {
+                self.allocate_64bit(target_pid, size)?
+            };
+
+            ptrace::detach(target_pid, None)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            Ok(allocated_addr)
+        }
+
+        fn allocate_64bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
+            let regs =
+                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let original_regs = regs;
+
+            let mut new_regs = regs;
+            new_regs.rax = 9;
+            new_regs.rdi = 0;
+            new_regs.rsi = size as u64;
+            new_regs.rdx = (PROT_READ | PROT_WRITE) as u64;
+            new_regs.r10 = (MAP_PRIVATE | MAP_ANONYMOUS) as u64;
+            new_regs.r8 = (-1i64) as u64;
+            new_regs.r9 = 0;
+
+            ptrace::setregs(target_pid, new_regs)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let original_instruction = ptrace::read(target_pid, regs.rip as ptrace::AddressType)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            unsafe {
+                ptrace::write(target_pid, regs.rip as ptrace::AddressType, 0x050f)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            }
+
+            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let result_regs =
+                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let allocated_addr = result_regs.rax as usize;
+
+            unsafe {
+                ptrace::write(
+                    target_pid,
+                    regs.rip as ptrace::AddressType,
+                    original_instruction,
+                )
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            }
+
+            ptrace::setregs(target_pid, original_regs)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            if allocated_addr as i64 == -1 || allocated_addr as i64 > -4096 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "mmap failed in target process",
+                ));
+            }
+
+            Ok(allocated_addr)
+        }
+
+        fn allocate_32bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
+            let regs =
+                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let original_regs = regs;
+
+            let mut new_regs = regs;
+            new_regs.rax = 192;
+            new_regs.rbx = 0;
+            new_regs.rcx = size as u64;
+            new_regs.rdx = (PROT_READ | PROT_WRITE) as u64;
+            new_regs.rsi = (MAP_PRIVATE | MAP_ANONYMOUS) as u64;
+            new_regs.rdi = (-1i64) as u64;
+            new_regs.rbp = 0;
+
+            ptrace::setregs(target_pid, new_regs)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let original_instruction = ptrace::read(target_pid, regs.rip as ptrace::AddressType)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            unsafe {
+                ptrace::write(target_pid, regs.rip as ptrace::AddressType, 0x80cd)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            }
+
+            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let result_regs =
+                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let allocated_addr = result_regs.rax as usize;
+
+            unsafe {
+                ptrace::write(
+                    target_pid,
+                    regs.rip as ptrace::AddressType,
+                    original_instruction,
+                )
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            }
+
+            ptrace::setregs(target_pid, original_regs)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            if allocated_addr as i32 == -1 || (allocated_addr as i32) > -4096 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "mmap failed in target process",
+                ));
+            }
+
+            Ok(allocated_addr)
+        }
     }
 }
