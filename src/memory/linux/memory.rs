@@ -1,10 +1,7 @@
 #[cfg(target_os = "linux")]
 
 pub mod platform {
-    use libc::{
-        MAP_ANONYMOUS, MAP_FAILED, MAP_PRIVATE, PROT_READ, PROT_WRITE, iovec, mmap, munmap,
-        process_vm_readv, process_vm_writev, user_regs_struct,
-    };
+    use libc::{iovec, process_vm_readv, process_vm_writev};
     use nix::sys::ptrace;
     use nix::sys::wait::waitpid;
     use nix::unistd::Pid;
@@ -14,7 +11,7 @@ pub mod platform {
     use std::process::Command;
 
     /* need this for allocate_memory when saving & modifying registers */
-    fn get_process_bitness(pid: i32) -> io::Result<usize> {
+    /* fn get_process_bitness(pid: i32) -> io::Result<usize> {
         let exe_path = format!("/proc/{}/exe", pid);
         let mut file = fs::File::open(&exe_path)?;
 
@@ -30,7 +27,7 @@ pub mod platform {
             2 => Ok(64),
             _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown elf")),
         }
-    }
+    } */
 
     /* old comm method truncates actual name of process at 15 characters for some reason
     resulting in unable to find process if the process name is longer than 15 */
@@ -251,7 +248,7 @@ pub mod platform {
         /* an attempt at allocating memory. doesnt work because i dont know 14 apparently*/
         /* for twfc ill just write shellcode to memory in some cave its just 4 bytes anyways */
         /*pub*/
-        fn allocate_memory(&self, size: usize) -> io::Result<usize> {
+        /* fn allocate_memory(&self, size: usize) -> io::Result<usize> {
             let bitpenis = get_process_bitness(self.pid)?;
 
             let target_pid = Pid::from_raw(self.pid);
@@ -348,6 +345,6 @@ pub mod platform {
             }
 
             Ok(addr)
-        }
+        } */
     }
 }
