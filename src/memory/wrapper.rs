@@ -1,11 +1,11 @@
-use crate::utils::*;
+use crate::memory::utils::*;
 use std::io;
 
 #[cfg(target_os = "windows")]
-use crate::windows::memory::platform;
+use crate::memory::windows::memory::platform;
 
 #[cfg(target_os = "linux")]
-use crate::linux::memory::platform;
+use crate::memory::linux::memory::platform;
 
 pub struct Process {
     pub pid: i32,

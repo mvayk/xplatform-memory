@@ -1,7 +1,6 @@
 use std::io;
 
-use crate::memory::*;
-use crate::wrapper::*;
+use crate::memory::wrapper::*;
 
 const DEFAULT_ASPECT: f32 = 1.777777791;
 const BASE_FOV: f32 = 90.0;

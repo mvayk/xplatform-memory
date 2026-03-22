@@ -1,10 +1,19 @@
 [package]
 name = "xplatform-memory"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
+
+[[bin]]
+name = "xplatform-patch-tfoc"
+path = "src/bin/tfoc.rs"
+
+[[bin]]
+name = "xplatform-patch-twfc"
+path = "src/bin/twfc.rs"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+nix = { version = "0.31.2", features = ["process", "ptrace"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
@@ -15,6 +24,3 @@ winapi = { version = "0.3", features = [
   "winnt",
   "winuser",
 ] }
-
-[dependencies]
-nix = { version = "0.31.2", features = ["process", "ptrace"] }

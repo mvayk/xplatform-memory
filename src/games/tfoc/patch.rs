@@ -1,7 +1,6 @@
 use std::io;
 
-use crate::memory::*;
-use crate::wrapper::*;
+use crate::memory::wrapper::*;
 
 pub fn patch(process_name: &str) -> io::Result<()> {
     println!("[+] Patching: {}", process_name);
