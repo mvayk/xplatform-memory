@@ -45,12 +45,43 @@ pub mod platform {
         ))
     }
 
+    enum SeccompMode {
+        DISABLED = 0,
+        STRICT = 1,
+        FILTER = 2,
+    }
+
+    fn seccomp_check(pid: i32) -> io::Result<u32> {
+        let status = fs::read_to_string(format!("/proc/{pid}/status"))?;
+
+        for line in status.lines() {
+            if let Some(value) = line.strip_prefix("Seccomp:") {
+                return Ok(value
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?);
+            }
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Seccomp field not found (kernel may lack CONFIG_SECCOMP, or you lack permission)",
+        ))
+    }
+
     pub struct ProcessPlatform {
         pub pid: i32,
     }
 
     impl ProcessPlatform {
         pub fn new(pid: i32) -> io::Result<Self> {
+            match seccomp_check(pid).unwrap() {
+                0 => println!("SeccompMode is Disabled"),
+                1 => println!("SeccompMode is Strict"),
+                2 => println!("SeccompMode is None"),
+                _ => println!("SeccompMode is unknown"),
+            }
+
             Ok(ProcessPlatform { pid })
         }
 
@@ -195,10 +226,9 @@ pub mod platform {
             Ok(())
         }
 
-        /* missing many checks n stuff so its very low quality */
         pub fn protect_memory(
             &self,
-            address: u64,
+            addresses: Vec<u64>,
             length: u64,
             protection: ProtectionType,
         ) -> io::Result<()> {
@@ -223,55 +253,61 @@ pub mod platform {
             let original_registers: user_regs_struct =
                 ctx("getregs (start)", ptrace::getregs(pid))?;
             let rip = original_registers.rip;
-
             let original_word = ctx("original_word: ", ptrace::read(pid, rip as *mut _))?;
+
             let mut patched = (original_word as usize).to_le_bytes();
             patched[0] = 0x0f;
             patched[1] = 0x05; /* syscall */
             patched[2] = 0xcc; /* int3    */
+            ptrace::write(pid, rip as *mut _, i64::from_le_bytes(patched))?;
 
-            let patched_word = i64::from_le_bytes(patched);
+            let mut result: io::Result<()> = Ok(());
 
-            /* write patch */
-            ptrace::write(pid, rip as *mut _, patched_word)?;
+            for &addr in &addresses {
+                let mut registers = original_registers;
+                registers.rax = libc::SYS_mprotect as u64;
+                registers.orig_rax = u64::MAX;
+                registers.rdi = addr;
+                registers.rsi = length;
+                registers.rdx = prot as u64;
+                registers.rip = rip;
 
-            /* setup the registers to call mprotect internally */
-            let mut registers = original_registers;
-            registers.rax = libc::SYS_mprotect as u64;
-            registers.rdi = address;
-            registers.rsi = length;
-            registers.rdx = prot as u64;
-            registers.rip = rip;
+                let step = (|| -> io::Result<i64> {
+                    ptrace::setregs(pid, registers)?;
+                    ptrace::cont(pid, None)?;
+                    match waitpid(pid, None)? {
+                        WaitStatus::Stopped(_, SIGTRAP) => {}
+                        other => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("unexpected wait status: {:?}", other),
+                            ));
+                        }
+                    }
+                    Ok(ptrace::getregs(pid)?.rax as i64)
+                })();
 
-            ptrace::setregs(pid, registers)?;
-
-            /* continue */
-            ptrace::cont(pid, None)?;
-
-            match waitpid(pid, None)? {
-                WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP) => {}
-                _ => return Err(io::Error::last_os_error()), // idk
+                match step {
+                    Ok(ret) if ret < 0 => {
+                        result = Err(io::Error::from_raw_os_error(-ret as i32));
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        result = Err(e);
+                        break;
+                    }
+                }
             }
 
-            let after = ptrace::getregs(pid)?;
-            let ret = after.rax as i64;
-
-            /* restore */
             ptrace::write(pid, rip as *mut _, original_word)?;
             ptrace::setregs(pid, original_registers)?;
-
-            /* debug  temp */
-            println!(
-                "[!] memory protection results: after: {:?}, ret: {}",
-                after, ret
-            );
-
             ptrace::detach(pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-            Ok(())
+            result
         }
 
-        /**/
+        /* stuff, also below */
         pub fn get_readable_regions(&self) -> io::Result<Vec<(usize, usize)>> {
             let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;
             let mut regions = Vec::new();
@@ -322,6 +358,36 @@ pub mod platform {
                 bytes.extend_from_slice(&buf);
             }
             Ok((addrs, bytes))
+        }
+
+        pub fn get_mapped_pages(&self) -> io::Result<Vec<u64>> {
+            let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
+            let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;
+            let mut pages = Vec::new();
+
+            for line in maps.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() < 2 {
+                    continue;
+                }
+                if parts.len() >= 6
+                    && matches!(
+                        parts[5],
+                        "[vvar]" | "[vvar_vclock]" | "[vdso]" | "[vsyscall]"
+                    )
+                {
+                    continue;
+                }
+                let Some((s, e)) = parts[0].split_once('-') else {
+                    continue;
+                };
+                let (Ok(s), Ok(e)) = (u64::from_str_radix(s, 16), u64::from_str_radix(e, 16))
+                else {
+                    continue;
+                };
+                pages.extend((s..e).step_by(page as usize));
+            }
+            Ok(pages)
         }
         /**/
 

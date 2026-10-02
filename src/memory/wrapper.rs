@@ -58,12 +58,12 @@ impl Process {
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */
     pub fn protect_memory(
         &self,
-        address: usize,
+        address: Vec<u64>,
         length: usize,
         protection: ProtectionType,
     ) -> io::Result<()> {
         self.inner
-            .protect_memory(address as u64, length as u64, protection)
+            .protect_memory(address, length as u64, protection)
     }
 
     pub fn allocate_memory() -> io::Result<usize> {
@@ -77,5 +77,9 @@ impl Process {
     /* linux only and im lazy */
     pub fn get_all_addresses(&self) -> io::Result<Vec<usize>> {
         self.inner.get_all_addresses()
+    }
+
+    pub fn get_all_pages(&self) -> io::Result<Vec<u64>> {
+        self.inner.get_mapped_pages()
     }
 }
