@@ -7,7 +7,7 @@ pub fn main() -> io::Result<()> {
     println!("[+] Patching: {}", process_name);
 
     let process = Process::new(process_name)?;
-    println!("PID: {}", process.pid);
+    println!("PID: {}", process.process.pid);
 
     let module_base = process.get_module_base(process_name)?;
     println!("base: {:x}", module_base);
