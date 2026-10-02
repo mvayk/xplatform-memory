@@ -1,3 +1,11 @@
+#[allow(non_camel_case_types)]
+pub enum ProtectionType {
+    PAGE_EXECUTE,           /* PROT_EXEC  */
+    PAGE_EXECUTE_READ,      /* PROT_READ  */
+    PAGE_EXECUTE_READWRITE, /* PROT_WRITE */
+    PAGE_NOACCESS,          /* PROT_NONE  */
+}
+
 pub fn parse_pattern(pattern: &str) -> Vec<Option<u8>> {
     pattern
         .split_whitespace()

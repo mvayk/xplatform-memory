@@ -1,5 +1,5 @@
 use crate::memory::utils::*;
-use std::io;
+use std::io::{self, ErrorKind};
 
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
@@ -39,10 +39,6 @@ impl Process {
         self.inner.write_memory(address, value)
     }
 
-    /* pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
-        self.inner.allocate_memory(size)
-    } */
-
     pub fn scan_module(&self, module: &str, pattern: &str) -> io::Result<usize> {
         let module_base = self.get_module_base(module)?;
         let module_size = self.get_module_size(module)?;
@@ -57,5 +53,24 @@ impl Process {
 
     pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {
         self.inner.get_aspect_ratio(window_title)
+    }
+
+    /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */
+    pub fn protect_memory(
+        &self,
+        address: usize,
+        length: usize,
+        protection: ProtectionType,
+    ) -> io::Result<()> {
+        self.inner
+            .protect_memory(address as u64, length as u64, protection)
+    }
+
+    pub fn allocate_memory() -> io::Result<usize> {
+        Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
+    }
+
+    pub fn free_memory() -> io::Result<()> {
+        Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
     }
 }

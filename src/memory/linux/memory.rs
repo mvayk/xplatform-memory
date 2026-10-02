@@ -1,33 +1,20 @@
 #[cfg(target_os = "linux")]
 
 pub mod platform {
-    use libc::{iovec, process_vm_readv, process_vm_writev};
+    use crate::memory::utils::ProtectionType;
+    use libc::{
+        PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE, iovec, process_vm_readv, process_vm_writev,
+        user_regs_struct,
+    };
+
     use nix::sys::ptrace;
-    use nix::sys::wait::waitpid;
+    use nix::sys::signal::Signal::SIGTRAP;
+    use nix::sys::wait::{WaitStatus, waitpid};
     use nix::unistd::Pid;
     use std::fs;
     use std::io;
     use std::mem;
     use std::process::Command;
-
-    /* need this for allocate_memory when saving & modifying registers */
-    /* fn get_process_bitness(pid: i32) -> io::Result<usize> {
-        let exe_path = format!("/proc/{}/exe", pid);
-        let mut file = fs::File::open(&exe_path)?;
-
-        let mut elf_header = [0u8; 5];
-        std::io::Read::read_exact(&mut file, &mut elf_header)?;
-
-        if &elf_header[0..4] != b"\x7fELF" {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Not an elf"));
-        }
-
-        match elf_header[4] {
-            1 => Ok(32),
-            2 => Ok(64),
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown elf")),
-        }
-    } */
 
     /* old comm method truncates actual name of process at 15 characters for some reason
     resulting in unable to find process if the process name is longer than 15 */
@@ -207,6 +194,79 @@ pub mod platform {
 
             Ok(())
         }
+
+        /* missing many checks n stuff so its very low quality */
+        pub fn protect_memory(
+            &self,
+            address: u64,
+            length: u64,
+            protection: ProtectionType,
+        ) -> io::Result<()> {
+            let mut prot: i32;
+
+            match protection {
+                ProtectionType::PAGE_EXECUTE => prot = PROT_EXEC,
+                ProtectionType::PAGE_EXECUTE_READ => prot = PROT_READ | PROT_EXEC,
+                ProtectionType::PAGE_EXECUTE_READWRITE => prot = PROT_READ | PROT_EXEC | PROT_WRITE,
+                ProtectionType::PAGE_NOACCESS => prot = PROT_NONE,
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Failed to match protection",
+                    ));
+                }
+            }
+
+            let pid = Pid::from_raw(self.pid);
+            let original_registers: user_regs_struct = ptrace::getregs(pid)?;
+            let rip = original_registers.rip;
+
+            let original_word = ptrace::read(pid, rip as *mut _)?;
+            let mut patched = (original_word as usize).to_le_bytes();
+            patched[0] = 0x0f;
+            patched[1] = 0x05; /* syscall */
+            patched[2] = 0xcc; /* int3    */
+
+            let patched_word = i64::from_le_bytes(patched);
+
+            /* write patch */
+            ptrace::write(pid, rip as *mut _, patched_word)?;
+
+            /* setup the registers to call mprotect internally */
+            let mut registers = original_registers;
+            registers.rax = libc::SYS_mprotect as u64;
+            registers.rdi = address;
+            registers.rsi = length;
+            registers.rdx = prot as u64;
+            registers.rip = rip;
+
+            ptrace::setregs(pid, registers)?;
+
+            /* continue */
+            ptrace::cont(pid, None)?;
+
+            match waitpid(pid, None)? {
+                WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP) => {}
+                _ => return Err(io::Error::last_os_error()), // idk
+            }
+
+            let after = ptrace::getregs(pid)?;
+            let ret = after.rax as i64;
+
+            /* restore */
+            ptrace::write(pid, rip as *mut _, original_word)?;
+            ptrace::setregs(pid, original_registers)?;
+
+            /* debug  temp */
+            println!(
+                "[!] memory protection results: after: {:?}, ret: {}",
+                after, ret
+            );
+
+            Ok(())
+        }
+
+        /* x11 only */
         pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {
             let output = Command::new("xdotool")
                 .args([
@@ -242,109 +302,5 @@ pub mod platform {
             /* fallback */
             Ok(16.0 / 9.0)
         }
-
-        /* TODO: signature scanning, protect memory, */
-
-        /* an attempt at allocating memory. doesnt work because i dont know 14 apparently*/
-        /* for twfc ill just write shellcode to memory in some cave its just 4 bytes anyways */
-        /*pub*/
-        /* fn allocate_memory(&self, size: usize) -> io::Result<usize> {
-            let bitpenis = get_process_bitness(self.pid)?;
-
-            let target_pid = Pid::from_raw(self.pid);
-
-            ptrace::attach(target_pid)
-                .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
-
-            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            /* much better way to have down this :\ */
-            let allocated_addr = if bitpenis == 32 {
-                self.allocate_32bit(target_pid, size)?
-            } else {
-                self.allocate_64bit(target_pid, size)?
-            };
-
-            ptrace::detach(target_pid, None)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            Ok(allocated_addr)
-        }
-
-        fn allocate_32bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
-            let original_regs =
-                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            let mut regs = original_regs;
-
-            regs.rax = 192; // SYS_mmap2
-            regs.rbx = 0; // addr = NULL
-            regs.rcx = size as u64; // length
-            regs.rdx = 0x7; // PROT_READ | PROT_WRITE | PROT_EXEC
-            regs.rsi = 0x22; // MAP_PRIVATE | MAP_ANONYMOUS
-            regs.rdi = (-1i32) as u64; // fd = -1
-            regs.rbp = 0; // offset = 0
-
-            ptrace::setregs(target_pid, regs)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            let result_regs =
-                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            ptrace::setregs(target_pid, original_regs)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            let addr = (result_regs.rax & 0xFFFFFFFF) as usize;
-
-            if addr > 0xFFFF0000 {
-                return Err(io::Error::new(io::ErrorKind::Other, "mmap failed"));
-            }
-
-            Ok(addr)
-        }
-
-        fn allocate_64bit(&self, target_pid: Pid, size: usize) -> io::Result<usize> {
-            let original_regs =
-                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            let mut regs = original_regs;
-
-            regs.rax = 9; // SYS_mmap
-            regs.rdi = 0; // addr = NULL
-            regs.rsi = size as u64; // length
-            regs.rdx = 0x7; // PROT_READ | PROT_WRITE | PROT_EXEC
-            regs.r10 = 0x22; // MAP_PRIVATE | MAP_ANONYMOUS
-            regs.r8 = (-1i64) as u64; // fd = -1
-            regs.r9 = 0; // offset = 0
-
-            ptrace::setregs(target_pid, regs)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            ptrace::step(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            waitpid(target_pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            let result_regs =
-                ptrace::getregs(target_pid).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            ptrace::setregs(target_pid, original_regs)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            let addr = result_regs.rax as usize;
-
-            if addr > 0xFFFFFFFFFFFF0000 {
-                return Err(io::Error::new(io::ErrorKind::Other, "mmap failed"));
-            }
-
-            Ok(addr)
-        } */
     }
 }

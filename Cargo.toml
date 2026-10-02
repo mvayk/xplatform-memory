@@ -13,7 +13,7 @@ path = "src/bin/twfc.rs"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
-nix = { version = "0.31.2", features = ["process", "ptrace"] }
+nix = { version = "0.31.2", features = ["process", "ptrace" ] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [

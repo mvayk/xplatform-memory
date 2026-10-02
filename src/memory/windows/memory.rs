@@ -1,5 +1,6 @@
 #[cfg(target_os = "windows")]
 pub mod platform {
+    use crate::memory::utils::ProtectionType;
     use std::ffi::CString;
     use std::{io, mem};
     use winapi::shared::minwindef::{DWORD, FALSE, HMODULE, MAX_PATH};
@@ -205,10 +206,34 @@ pub mod platform {
 
         pub fn allocate_memory(&self, size: usize) -> io::Result<usize> {
             use winapi::um::memoryapi::VirtualAllocEx;
-            use winapi::um::winnt::{MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE};
+            use winapi::um::winnt::{PAGE_EXECUTE, PAGE_READ, PAGE_READWRITE, PAGE_WRITECOPY};
 
             let addr = unsafe {
                 VirtualAllocEx(
+                    self.handle,
+                    std::ptr::null_mut(),
+                    size,
+                    MEM_COMMIT | MEM_RESERVE,
+                    PAGE_EXECUTE_READWRITE,
+                )
+            };
+
+            if addr.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+
+            Ok(addr as usize)
+        }
+
+        /* not finished */
+        pub fn protect_memory(
+            &self,
+            address: usize,
+            size: usize,
+            protection: ProtectionType,
+        ) -> io::Result<()> {
+            let addr = unsafe {
+                VirtualProtectEx(
                     self.handle,
                     std::ptr::null_mut(),
                     size,
