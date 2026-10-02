@@ -1,9 +1,16 @@
+use std::io;
+
 #[allow(non_camel_case_types)]
 pub enum ProtectionType {
     PAGE_EXECUTE,           /* PROT_EXEC  */
     PAGE_EXECUTE_READ,      /* PROT_READ  */
     PAGE_EXECUTE_READWRITE, /* PROT_WRITE */
     PAGE_NOACCESS,          /* PROT_NONE  */
+}
+
+/* helps with finding errors */
+pub fn ctx<T, E: std::fmt::Display>(label: &str, r: Result<T, E>) -> io::Result<T> {
+    r.map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{label}: {e}")))
 }
 
 pub fn parse_pattern(pattern: &str) -> Vec<Option<u8>> {

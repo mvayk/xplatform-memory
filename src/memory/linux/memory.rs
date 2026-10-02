@@ -1,7 +1,7 @@
 #[cfg(target_os = "linux")]
 
 pub mod platform {
-    use crate::memory::utils::ProtectionType;
+    use crate::memory::utils::{ProtectionType, ctx};
     use libc::{
         PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE, iovec, process_vm_readv, process_vm_writev,
         user_regs_struct,
@@ -202,26 +202,29 @@ pub mod platform {
             length: u64,
             protection: ProtectionType,
         ) -> io::Result<()> {
-            let mut prot: i32;
-
-            match protection {
-                ProtectionType::PAGE_EXECUTE => prot = PROT_EXEC,
-                ProtectionType::PAGE_EXECUTE_READ => prot = PROT_READ | PROT_EXEC,
-                ProtectionType::PAGE_EXECUTE_READWRITE => prot = PROT_READ | PROT_EXEC | PROT_WRITE,
-                ProtectionType::PAGE_NOACCESS => prot = PROT_NONE,
+            let prot: i32 = match protection {
+                ProtectionType::PAGE_EXECUTE => PROT_EXEC,
+                ProtectionType::PAGE_EXECUTE_READ => PROT_READ | PROT_EXEC,
+                ProtectionType::PAGE_EXECUTE_READWRITE => PROT_READ | PROT_EXEC | PROT_WRITE,
+                ProtectionType::PAGE_NOACCESS => PROT_NONE,
                 _ => {
                     return Err(io::Error::new(
                         io::ErrorKind::Other,
                         "Failed to match protection",
                     ));
                 }
-            }
+            };
 
             let pid = Pid::from_raw(self.pid);
-            let original_registers: user_regs_struct = ptrace::getregs(pid)?;
+
+            ptrace::attach(pid).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
+            waitpid(pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let original_registers: user_regs_struct =
+                ctx("getregs (start)", ptrace::getregs(pid))?;
             let rip = original_registers.rip;
 
-            let original_word = ptrace::read(pid, rip as *mut _)?;
+            let original_word = ctx("original_word: ", ptrace::read(pid, rip as *mut _))?;
             let mut patched = (original_word as usize).to_le_bytes();
             patched[0] = 0x0f;
             patched[1] = 0x05; /* syscall */
@@ -263,8 +266,64 @@ pub mod platform {
                 after, ret
             );
 
+            ptrace::detach(pid, None).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
             Ok(())
         }
+
+        /**/
+        pub fn get_readable_regions(&self) -> io::Result<Vec<(usize, usize)>> {
+            let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;
+            let mut regions = Vec::new();
+
+            for line in maps.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() < 2 || !parts[1].starts_with('r') {
+                    continue;
+                }
+                // [vvar]/[vsyscall]
+                if parts.len() >= 6 && (parts[5] == "[vvar]" || parts[5] == "[vsyscall]") {
+                    continue;
+                }
+                if let Some((s, e)) = parts[0].split_once('-') {
+                    if let (Ok(s), Ok(e)) =
+                        (usize::from_str_radix(s, 16), usize::from_str_radix(e, 16))
+                    {
+                        regions.push((s, e));
+                    }
+                }
+            }
+            Ok(regions)
+        }
+
+        pub fn get_all_addresses(&self) -> io::Result<Vec<usize>> {
+            let mut addrs = Vec::new();
+            for (s, e) in self.get_readable_regions()? {
+                addrs.extend(s..e);
+            }
+            Ok(addrs)
+        }
+
+        pub fn dump_memory(&self) -> io::Result<(Vec<usize>, Vec<u8>)> {
+            use std::os::unix::fs::FileExt;
+
+            let file = fs::File::open(format!("/proc/{}/mem", self.pid))?;
+            let mut addrs = Vec::new();
+            let mut bytes = Vec::new();
+
+            for (start, end) in self.get_readable_regions()? {
+                let mut buf = vec![0u8; end - start];
+                let n = match file.read_at(&mut buf, start as u64) {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                };
+                buf.truncate(n);
+                addrs.extend(start..start + n);
+                bytes.extend_from_slice(&buf);
+            }
+            Ok((addrs, bytes))
+        }
+        /**/
 
         /* x11 only */
         pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {

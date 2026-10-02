@@ -1,5 +1,5 @@
 use crate::memory::utils::*;
-use std::io::{self, ErrorKind};
+use std::io::{self};
 
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
@@ -72,5 +72,10 @@ impl Process {
 
     pub fn free_memory() -> io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
+    }
+
+    /* linux only and im lazy */
+    pub fn get_all_addresses(&self) -> io::Result<Vec<usize>> {
+        self.inner.get_all_addresses()
     }
 }
