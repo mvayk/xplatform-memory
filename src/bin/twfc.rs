@@ -1,16 +1,5 @@
 use std::io;
-
 use xplatform_memory::memory::wrapper::*;
-
-const DEFAULT_ASPECT: f32 = 1.777777791;
-const BASE_FOV: f32 = 90.0;
-
-fn calculate_fov(aspect_ratio: f32, additional_fov: f32) -> io::Result<f32> {
-    let ratio = aspect_ratio / DEFAULT_ASPECT;
-    let half_fov = (BASE_FOV / 2.0).to_radians();
-    let corrected = 2.0 * (half_fov.tan() * ratio).atan();
-    Ok(corrected.to_degrees() + additional_fov)
-}
 
 pub fn main() -> io::Result<()> {
     let process_name = "twfc_steamless.exe";
@@ -43,10 +32,7 @@ pub fn main() -> io::Result<()> {
     */
     /*let allocation_addr = process.allocate_memory(4)?; */
     let cave_addr = 0x12A3CCD0;
-    let fov = calculate_fov(
-        process.get_aspect_ratio("Transformers: War for Cybertron")?,
-        20.0f32,
-    )?;
+    let fov = 20usize;
     process.write_memory(cave_addr, &fov)?;
 
     let cave_bytes = (cave_addr as u32).to_le_bytes();

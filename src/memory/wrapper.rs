@@ -1,4 +1,4 @@
-use crate::memory::{linux::platform::ProcessPlatform, utils::*};
+use crate::memory::definitions::ProtectionType;
 use std::io;
 
 #[cfg(target_os = "windows")]
