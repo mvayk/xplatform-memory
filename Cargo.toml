@@ -1,19 +1,23 @@
 [package]
 name = "xplatform-memory"
-version = "0.1.2"
+version = "0.2.4"
 edition = "2024"
 
 [[bin]]
-name = "xplatform-patch-tfoc"
+name = "tfoc"
 path = "src/bin/tfoc.rs"
 
 [[bin]]
-name = "xplatform-patch-twfc"
+name = "twfc"
 path = "src/bin/twfc.rs"
+
+[[bin]]
+name = "openttd"
+path = "src/bin/openttd.rs"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
-nix = { version = "0.31.2", features = ["process", "ptrace" ] }
+nix = { version = "0.31.2", features = ["process", "ptrace"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [

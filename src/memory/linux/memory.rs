@@ -1,7 +1,7 @@
 #[cfg(target_os = "linux")]
-
 pub mod platform {
-    use crate::memory::utils::{ProtectionType, ctx};
+    use crate::memory::utils::*;
+    use crate::memory::wrapper::*;
     use libc::{
         PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE, iovec, process_vm_readv, process_vm_writev,
         user_regs_struct,
@@ -307,7 +307,8 @@ pub mod platform {
             result
         }
 
-        /* stuff, also below */
+        /* all the code in this project is disgusting and i hate it and its mere existence warrants me being placed in involuntary psychiatric care */
+
         pub fn get_readable_regions(&self) -> io::Result<Vec<(usize, usize)>> {
             let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;
             let mut regions = Vec::new();

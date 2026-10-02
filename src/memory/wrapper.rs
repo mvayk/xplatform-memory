@@ -1,5 +1,5 @@
 use crate::memory::utils::*;
-use std::io::{self};
+use std::io;
 
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
@@ -7,36 +7,44 @@ use crate::memory::windows::memory::platform;
 #[cfg(target_os = "linux")]
 use crate::memory::linux::memory::platform;
 
+#[allow(non_camel_case_types)]
+pub enum ProtectionType {
+    PAGE_EXECUTE,           /* PROT_EXEC  */
+    PAGE_EXECUTE_READ,      /* PROT_READ  */
+    PAGE_EXECUTE_READWRITE, /* PROT_WRITE */
+    PAGE_NOACCESS,          /* PROT_NONE  */
+}
+
 pub struct Process {
     pub pid: i32,
-    inner: platform::ProcessPlatform,
+    process: platform::ProcessPlatform,
 }
 
 impl Process {
     pub fn new(name: &str) -> io::Result<Self> {
         let pid = platform::find_pid(name)?;
-        let inner = platform::ProcessPlatform::new(pid)?;
-        Ok(Process { pid, inner })
+        let process = platform::ProcessPlatform::new(pid)?;
+        Ok(Process { pid, process })
     }
 
     pub fn get_module_base(&self, module: &str) -> io::Result<usize> {
-        self.inner.get_module_base(module)
+        self.process.get_module_base(module)
     }
 
     pub fn get_module_size(&self, module: &str) -> io::Result<usize> {
-        self.inner.get_module_size(module)
+        self.process.get_module_size(module)
     }
 
     pub fn read_memory<T: Copy>(&self, address: usize) -> io::Result<T> {
-        self.inner.read_memory(address)
+        self.process.read_memory(address)
     }
 
     pub fn read_memory_range(&self, address_start: usize, size: usize) -> io::Result<Vec<u8>> {
-        self.inner.read_memory_range(address_start, size)
+        self.process.read_memory_range(address_start, size)
     }
 
     pub fn write_memory<T: Copy>(&self, address: usize, value: &T) -> io::Result<()> {
-        self.inner.write_memory(address, value)
+        self.process.write_memory(address, value)
     }
 
     pub fn scan_module(&self, module: &str, pattern: &str) -> io::Result<usize> {
@@ -52,7 +60,7 @@ impl Process {
     }
 
     pub fn get_aspect_ratio(&self, window_title: &str) -> io::Result<f32> {
-        self.inner.get_aspect_ratio(window_title)
+        self.process.get_aspect_ratio(window_title)
     }
 
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */
@@ -62,7 +70,7 @@ impl Process {
         length: usize,
         protection: ProtectionType,
     ) -> io::Result<()> {
-        self.inner
+        self.process
             .protect_memory(address, length as u64, protection)
     }
 
@@ -74,12 +82,11 @@ impl Process {
         Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
     }
 
-    /* linux only and im lazy */
     pub fn get_all_addresses(&self) -> io::Result<Vec<usize>> {
-        self.inner.get_all_addresses()
+        self.process.get_all_addresses()
     }
 
     pub fn get_all_pages(&self) -> io::Result<Vec<u64>> {
-        self.inner.get_mapped_pages()
+        self.process.get_mapped_pages()
     }
 }
