@@ -1,3 +1,5 @@
+/* todo: refactor */
+
 #[cfg(target_os = "windows")]
 pub mod platform {
     use crate::memory::utils::ProtectionType;

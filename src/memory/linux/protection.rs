@@ -1,5 +1,3 @@
-/* todo refactor*/
-
 use crate::memory::definitions::ProtectionType;
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::trace::SyscallInjector;
@@ -14,12 +12,6 @@ fn match_protection(p: ProtectionType) -> io::Result<i32> {
         PAGE_EXECUTE => PROT_EXEC,
         PAGE_EXECUTE_READ => PROT_READ | PROT_EXEC,
         PAGE_EXECUTE_READWRITE => PROT_READ | PROT_WRITE | PROT_EXEC,
-        other => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("unsupported protection: {other:?}"),
-            ));
-        }
     })
 }
 
@@ -33,7 +25,17 @@ impl ProcessPlatform {
         let prot = match_protection(protection)? as u64;
         let injector = SyscallInjector::new(Pid::from_raw(self.pid))?;
         for &addr in addresses {
-            injector.syscall(libc::SYS_mprotect, [addr, length, prot, 0, 0, 0])?;
+            match injector.syscall(libc::SYS_mprotect, [addr, length, prot, 0, 0, 0]) {
+                Ok(ret) if ret < 0 => {
+                    tracing::error!(addr = format_args!("{addr:#x}"), ret, "mprotect failed");
+                    return Err(io::Error::from_raw_os_error(-ret as i32));
+                }
+                Ok(_) => tracing::warn!(addr = format_args!("{addr:#x}"), "protected"),
+                Err(e) => {
+                    tracing::error!(addr = format_args!("{addr:#x}"), error = %e, "syscall failed");
+                    return Err(e);
+                }
+            }
         }
         Ok(())
     }

@@ -14,17 +14,24 @@ impl PtraceGuard {
         ptrace::attach(pid).map_err(io::Error::from)?;
         let guard = Self { pid };
         match waitpid(pid, None).map_err(io::Error::from)? {
-            WaitStatus::Stopped(..) => Ok(guard),
-            other => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("unexpected wait status after attach: {other:?}"),
-            )),
+            WaitStatus::Stopped(..) => {
+                tracing::info!(pid = pid.as_raw(), "ptrace attach ok");
+                Ok(guard)
+            }
+            other => {
+                tracing::error!(pid = pid.as_raw(), status = ?other, "unexpected wait status after attach");
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("unexpected wait status after attach: {other:?}"),
+                ))
+            }
         }
     }
 }
 
 impl Drop for PtraceGuard {
     fn drop(&mut self) {
+        tracing::info!(pid = self.pid.as_raw(), "ptrace detach");
         let _ = ptrace::detach(self.pid, None);
     }
 }
@@ -50,6 +57,12 @@ impl SyscallInjector {
         patched[..3].copy_from_slice(&Self::STUB);
         ptrace::write(pid, rip, i64::from_le_bytes(patched))?;
 
+        tracing::info!(
+            pid = pid.as_raw(),
+            rip = format_args!("{:#x}", saved_regs.rip),
+            "syscall stub patched in"
+        );
+
         Ok(Self {
             guard,
             saved_regs,
@@ -74,6 +87,7 @@ impl SyscallInjector {
         match waitpid(pid, None)? {
             WaitStatus::Stopped(_, SIGTRAP) => {}
             other => {
+                tracing::error!(pid = pid.as_raw(), nr, status = ?other, "unexpected wait status during syscall");
                 return Err(io::Error::other(format!(
                     "unexpected wait status: {other:?}"
                 )));
@@ -82,8 +96,10 @@ impl SyscallInjector {
 
         let ret = ptrace::getregs(pid)?.rax as i64;
         if (-4095..0).contains(&ret) {
+            tracing::warn!(pid = pid.as_raw(), nr, ret, "remote syscall returned error");
             Err(io::Error::from_raw_os_error(-ret as i32))
         } else {
+            tracing::info!(pid = pid.as_raw(), nr, ret, "remote syscall ok");
             Ok(ret)
         }
     }
@@ -93,6 +109,10 @@ impl SyscallInjector {
 impl Drop for SyscallInjector {
     fn drop(&mut self) {
         let pid = self.guard.pid;
+        tracing::info!(
+            pid = pid.as_raw(),
+            "restoring original instruction + registers"
+        );
         let _ = ptrace::write(pid, self.saved_regs.rip as *mut _, self.saved_word);
         let _ = ptrace::setregs(pid, self.saved_regs);
     }

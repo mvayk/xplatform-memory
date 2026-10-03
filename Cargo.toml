@@ -15,6 +15,10 @@ path = "src/bin/twfc.rs"
 name = "openttd"
 path = "src/bin/openttd.rs"
 
+[[bin]]
+name = "test"
+path = "src/bin/test.rs"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 nix = { version = "0.31.2", features = ["process", "ptrace"] }
@@ -28,3 +32,9 @@ winapi = { version = "0.3", features = [
   "winnt",
   "winuser",
 ] }
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+owo-colors = "4"
+chrono = "0.4"

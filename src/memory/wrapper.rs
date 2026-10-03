@@ -14,6 +14,8 @@ pub struct Process {
 
 impl Process {
     pub fn new(name: &str) -> io::Result<Self> {
+        use crate::memory::formatter::construct_formatter;
+        construct_formatter();
         let pid = platform::ProcessPlatform::find_pid(name)?;
         let process = platform::ProcessPlatform::new(pid)?;
         Ok(Process { pid, process })

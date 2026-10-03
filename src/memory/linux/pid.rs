@@ -18,12 +18,14 @@ impl ProcessPlatform {
                             .unwrap_or(exe_path);
 
                         if exe_name.eq_ignore_ascii_case(name) {
+                            tracing::info!(pid, name, "find_pid ok");
                             return Ok(pid);
                         }
                     }
                 }
             }
         }
+        tracing::error!(name, "find_pid failed");
         Err(io::Error::new(
             io::ErrorKind::NotFound,
             "Failed to find process",

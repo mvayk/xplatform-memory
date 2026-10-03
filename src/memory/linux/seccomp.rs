@@ -2,9 +2,9 @@ use std::{fs, io, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeccompMode {
-    DISABLED,
-    STRICT,
-    FILTER,
+    Disabled = 0,
+    Strict = 1,
+    Filter = 2,
 }
 
 impl TryFrom<u32> for SeccompMode {
@@ -12,13 +12,16 @@ impl TryFrom<u32> for SeccompMode {
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
-            0 => Ok(Self::DISABLED),
-            1 => Ok(Self::STRICT),
-            2 => Ok(Self::FILTER),
-            n => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unknown seccomp mode: {n}"),
-            )),
+            0 => Ok(Self::Disabled),
+            1 => Ok(Self::Strict),
+            2 => Ok(Self::Filter),
+            n => {
+                tracing::warn!(value = n, "unknown seccomp mode");
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("unknown seccomp mode: {n}"),
+                ))
+            }
         }
     }
 }
@@ -37,7 +40,7 @@ impl FromStr for SeccompMode {
 pub fn seccomp_check(pid: i32) -> io::Result<SeccompMode> {
     let status = fs::read_to_string(format!("/proc/{pid}/status"))?;
 
-    status
+    let mode = status
         .lines()
         .find_map(|line| line.strip_prefix("Seccomp:"))
         .ok_or_else(|| {
@@ -46,5 +49,8 @@ pub fn seccomp_check(pid: i32) -> io::Result<SeccompMode> {
                 "Seccomp field not found (kernel may lack CONFIG_SECCOMP)",
             )
         })?
-        .parse()
+        .parse()?;
+
+    tracing::info!(pid, mode = ?mode, "seccomp check");
+    Ok(mode)
 }

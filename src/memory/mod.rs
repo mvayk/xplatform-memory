@@ -1,4 +1,5 @@
 pub mod definitions;
+pub mod formatter;
 pub mod utils;
 pub mod wrapper;
 
