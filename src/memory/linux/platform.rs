@@ -10,7 +10,6 @@ pub struct ProcessPlatform {
 impl ProcessPlatform {
     pub fn new(pid: i32) -> io::Result<Self> {
         let seccomp_mode = seccomp_check(pid)?;
-        tracing::info!(?seccomp_mode);
         Ok(ProcessPlatform { pid, seccomp_mode })
     }
 }
