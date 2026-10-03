@@ -34,12 +34,12 @@ impl Process {
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */
     pub fn protect_memory(
         &self,
-        address: Vec<u64>,
+        addresses: &[u64],
         length: usize,
         protection: ProtectionType,
     ) -> io::Result<()> {
         self.process
-            .protect_memory(address, length as u64, protection)
+            .protect_memory(addresses, length as u64, protection)
     }
 
     pub fn allocate_memory() -> io::Result<usize> {

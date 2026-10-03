@@ -1,5 +1,4 @@
 use std::io;
-
 use xplatform_memory::memory::wrapper::*;
 
 pub fn main() -> io::Result<()> {
