@@ -3,7 +3,7 @@ use nix::sys::ptrace;
 use nix::sys::signal::Signal::SIGTRAP;
 use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::Pid;
-use std::io;
+use std::{io, process};
 
 pub struct PtraceGuard {
     pid: Pid,
@@ -15,7 +15,7 @@ impl PtraceGuard {
         let guard = Self { pid };
         match waitpid(pid, None).map_err(io::Error::from)? {
             WaitStatus::Stopped(..) => {
-                tracing::info!(pid = pid.as_raw(), "ptrace attach ok");
+                tracing::warn!(pid = pid.as_raw(), "ptrace attached");
                 Ok(guard)
             }
             other => {
@@ -31,8 +31,8 @@ impl PtraceGuard {
 
 impl Drop for PtraceGuard {
     fn drop(&mut self) {
-        tracing::info!(pid = self.pid.as_raw(), "ptrace detach");
         let _ = ptrace::detach(self.pid, None);
+        tracing::warn!(pid = self.pid.as_raw(), "ptrace detached");
     }
 }
 
@@ -88,6 +88,7 @@ impl SyscallInjector {
             WaitStatus::Stopped(_, SIGTRAP) => {}
             other => {
                 tracing::error!(pid = pid.as_raw(), nr, status = ?other, "unexpected wait status during syscall");
+                //self.fake_drop(true, false);
                 return Err(io::Error::other(format!(
                     "unexpected wait status: {other:?}"
                 )));
@@ -96,11 +97,73 @@ impl SyscallInjector {
 
         let ret = ptrace::getregs(pid)?.rax as i64;
         if (-4095..0).contains(&ret) {
-            tracing::warn!(pid = pid.as_raw(), nr, ret, "remote syscall returned error");
+            tracing::error!(pid = pid.as_raw(), nr, ret, "remote syscall returned error");
             Err(io::Error::from_raw_os_error(-ret as i32))
         } else {
             tracing::info!(pid = pid.as_raw(), nr, ret, "remote syscall ok");
             Ok(ret)
+        }
+    }
+
+    fn restore(&self) -> bool {
+        let pid = self.guard.pid;
+        let mut result;
+
+        match ptrace::write(pid, self.saved_regs.rip as *mut _, self.saved_word) {
+            Ok(_) => {
+                tracing::info!("restore successfully wrote instruction pointer");
+                result = true;
+            }
+            Err(e) => {
+                tracing::error!(
+                    rip = self.saved_regs.rip,
+                    word = self.saved_word,
+                    error = %e,
+                    "restore failed to write rip"
+                );
+                //return Err(e.into());
+                result = false;
+            }
+        }
+
+        if result == false {
+            tracing::warn!("restore aborting");
+            return result;
+        }
+
+        match ptrace::setregs(pid, self.saved_regs) {
+            Ok(_) => {
+                tracing::info!("restore successfully set registers");
+                result = true;
+            }
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "restore failed to set registers"
+                );
+                // return Err(e.into());
+                result = false;
+            }
+        }
+
+        return result;
+    }
+
+    /* this yucky */
+    fn fake_drop(&self, exit: bool, skip: bool) {
+        if skip == false {
+            let restore_success = self.restore();
+            match restore_success {
+                false => tracing::error!(
+                    restore_success = restore_success,
+                    "restore failed, is process alive?"
+                ),
+                true => {}
+            }
+        }
+
+        if exit {
+            std::process::exit(0x0100);
         }
     }
 }
@@ -108,12 +171,6 @@ impl SyscallInjector {
 #[cfg(target_arch = "x86_64")]
 impl Drop for SyscallInjector {
     fn drop(&mut self) {
-        let pid = self.guard.pid;
-        tracing::info!(
-            pid = pid.as_raw(),
-            "restoring original instruction + registers"
-        );
-        let _ = ptrace::write(pid, self.saved_regs.rip as *mut _, self.saved_word);
-        let _ = ptrace::setregs(pid, self.saved_regs);
+        self.fake_drop(false, false);
     }
 }

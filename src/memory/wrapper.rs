@@ -36,7 +36,7 @@ impl Process {
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */
     pub fn protect_memory(
         &self,
-        addresses: &[u64],
+        addresses: Vec<u64>,
         length: usize,
         protection: ProtectionType,
     ) -> io::Result<()> {
@@ -58,5 +58,14 @@ impl Process {
 
     pub fn get_all_pages(&self) -> io::Result<Vec<u64>> {
         self.process.get_mapped_pages()
+    }
+
+    pub fn get_readable_regions(&self) -> io::Result<Vec<(usize, usize)>> {
+        self.process.get_readable_regions()
+    }
+
+    pub fn exit(&self) -> io::Result<()> {
+        tracing::warn!("xplatform-memory exited");
+        Ok(())
     }
 }

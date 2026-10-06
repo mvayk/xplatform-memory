@@ -18,19 +18,19 @@ fn match_protection(p: ProtectionType) -> io::Result<i32> {
 impl ProcessPlatform {
     pub fn protect_memory(
         &self,
-        addresses: &[u64],
+        addresses: Vec<u64>,
         length: u64,
         protection: ProtectionType,
     ) -> io::Result<()> {
         let prot = match_protection(protection)? as u64;
         let injector = SyscallInjector::new(Pid::from_raw(self.pid))?;
-        for &addr in addresses {
+        for addr in addresses {
             match injector.syscall(libc::SYS_mprotect, [addr, length, prot, 0, 0, 0]) {
                 Ok(ret) if ret < 0 => {
                     tracing::error!(addr = format_args!("{addr:#x}"), ret, "mprotect failed");
                     return Err(io::Error::from_raw_os_error(-ret as i32));
                 }
-                Ok(_) => tracing::warn!(addr = format_args!("{addr:#x}"), "protected"),
+                Ok(_) => tracing::info!(addr = format_args!("{addr:#x}"), "protected"),
                 Err(e) => {
                     tracing::error!(addr = format_args!("{addr:#x}"), error = %e, "syscall failed");
                     return Err(e);

@@ -10,20 +10,27 @@ impl ProcessPlatform {
         let mut regions = Vec::new();
 
         for line in maps.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 2 || !parts[1].starts_with('r') {
+            let mut it = line.split_whitespace();
+            let (Some(range), Some(perms)) = (it.next(), it.next()) else {
+                continue;
+            };
+            if !perms.starts_with('r') {
                 continue;
             }
-            // [vvar]/[vsyscall]
-            if parts.len() >= 6 && (parts[5] == "[vvar]" || parts[5] == "[vsyscall]") {
+            let path = it.nth(3).unwrap_or("");
+            if matches!(path, "[vvar]" | "[vvar_vclock]" | "[vsyscall]")
+                || path.starts_with("/dev/")
+            {
                 continue;
             }
-            if let Some((s, e)) = parts[0].split_once('-') {
-                if let (Ok(s), Ok(e)) = (usize::from_str_radix(s, 16), usize::from_str_radix(e, 16))
-                {
-                    regions.push((s, e));
-                }
-            }
+            let Some((s, e)) = range.split_once('-') else {
+                continue;
+            };
+            let (Ok(s), Ok(e)) = (usize::from_str_radix(s, 16), usize::from_str_radix(e, 16))
+            else {
+                continue;
+            };
+            regions.push((s, e));
         }
         Ok(regions)
     }
@@ -34,26 +41,6 @@ impl ProcessPlatform {
             addrs.extend(s..e);
         }
         Ok(addrs)
-    }
-
-    pub fn dump_memory(&self) -> io::Result<(Vec<usize>, Vec<u8>)> {
-        use std::os::unix::fs::FileExt;
-
-        let file = fs::File::open(format!("/proc/{}/mem", self.pid))?;
-        let mut addrs = Vec::new();
-        let mut bytes = Vec::new();
-
-        for (start, end) in self.get_readable_regions()? {
-            let mut buf = vec![0u8; end - start];
-            let n = match file.read_at(&mut buf, start as u64) {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-            buf.truncate(n);
-            addrs.extend(start..start + n);
-            bytes.extend_from_slice(&buf);
-        }
-        Ok((addrs, bytes))
     }
 
     pub fn get_mapped_pages(&self) -> io::Result<Vec<u64>> {
