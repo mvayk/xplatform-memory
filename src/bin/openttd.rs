@@ -1,4 +1,3 @@
-use libc::xdp_umem_reg;
 use std::{
     fs::File,
     io::{self, BufWriter, Write},
@@ -41,14 +40,16 @@ pub fn main() -> io::Result<()> {
 
     process.write_memory(money_addy, &100000000i64)?;
 
-    dump_stuff(&process)?;
+    //dump_stuff(&process)?;
+    // let addy = [0x1400000].to_vec();
+    // process.protect_memory(addy, 1usize, ProtectionType::PAGE_EXECUTE_READWRITE)?;
 
-    process.protect_memory(
-        // &[0x140000u64],
-        process.get_all_pages()?,
-        1usize,
-        ProtectionType::PAGE_EXECUTE_READWRITE,
-    )?;
+    /* dont do this. */
+    // process.protect_memory(
+    //     process.get_all_pages()?,
+    //     1usize,
+    //     ProtectionType::PAGE_EXECUTE_READWRITE,
+    // )?;
 
     process.exit()
 }

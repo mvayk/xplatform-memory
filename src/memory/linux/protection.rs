@@ -30,7 +30,10 @@ impl ProcessPlatform {
                     tracing::error!(addr = format_args!("{addr:#x}"), ret, "mprotect failed");
                     return Err(io::Error::from_raw_os_error(-ret as i32));
                 }
-                Ok(_) => tracing::info!(addr = format_args!("{addr:#x}"), "protected"),
+                Ok(_) => tracing::info!(
+                    addr = format_args!("{addr:#x} as {protection:?}"),
+                    "protected"
+                ),
                 Err(e) => {
                     tracing::error!(addr = format_args!("{addr:#x}"), error = %e, "syscall failed");
                     return Err(e);

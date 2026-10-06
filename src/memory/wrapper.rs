@@ -65,7 +65,7 @@ impl Process {
     }
 
     pub fn exit(&self) -> io::Result<()> {
-        tracing::warn!("xplatform-memory exited");
+        tracing::info!("xplatform-memory exited");
         Ok(())
     }
 }

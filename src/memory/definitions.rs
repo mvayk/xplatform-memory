@@ -1,5 +1,5 @@
 #[allow(non_camel_case_types)]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum ProtectionType {
     PAGE_EXECUTE,           /* PROT_EXEC  */
     PAGE_EXECUTE_READ,      /* PROT_READ  */
