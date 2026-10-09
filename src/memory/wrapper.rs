@@ -64,6 +64,10 @@ impl Process {
         self.process.get_readable_regions()
     }
 
+    pub fn get_memory_protection(&self) -> io::Result<ProtectionType> {
+        Ok(ProtectionType::PAGE_EXECUTE)
+    }
+
     pub fn exit(&self) -> io::Result<()> {
         tracing::info!("xplatform-memory exited");
         Ok(())

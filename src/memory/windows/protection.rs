@@ -1,4 +1,3 @@
-/* im sadkjlfjlaksdjflkasd jfklajsdklfjkljkljkllklklkklkljk substance */
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
 pub enum ProtectionType {
@@ -8,18 +7,4 @@ pub enum ProtectionType {
     PAGE_NOACCESS,          /* PROT_NONE  */
     PAGE_READONLY,          /* PROT_READ */
     PAGE_READWRITE,         /* PROT_READWRITE */
-}
-
-pub struct Page {
-    pub size: u64,
-    pub protection_flag: ProtectionType,
-    pub start_address: u64,
-    pub end_address: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SeccompMode {
-    Disabled = 0,
-    Strict = 1,
-    Filter = 2,
 }
