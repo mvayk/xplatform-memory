@@ -1,7 +1,8 @@
 /*
  TODO: REFACTOR NOW
 */
-use crate::memory::definitions::{Page, ProtectionType};
+use crate::memory::definitions::ProtectionType::{self, PAGE_EXECUTE_READ};
+use crate::memory::linux::page::Page;
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::protection::protection_to_string;
 use std::{fs, io};
@@ -28,7 +29,11 @@ fn parse_permissions(parsed_line: (u64, u64, &str)) -> io::Result<ProtectionType
             b'-' => Ok(false),
             c if c == on => Ok(true),
             _ => {
-                tracing::error!()
+                tracing::error!(
+                    permission = permission,
+                    bytes = bytes,
+                    "parse_permissions failed"
+                );
                 Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!(
@@ -60,30 +65,25 @@ fn parse_permissions(parsed_line: (u64, u64, &str)) -> io::Result<ProtectionType
     }
 }
 
-impl Page {
-    pub fn new(start_address: u64, protection_flag: ProtectionType) -> io::Result<Self> {
-        let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
-        let end_address = start_address + size;
+impl ProcessPlatform {
+    pub fn get_page_from_address(&self, address: u64) -> io::Result<Page> {
+        let pages = self.get_all_pages()?;
 
-        Ok(Page {
-            size,
-            protection_flag,
-            start_address,
-            end_address,
-        })
-    }
-
-    pub fn get_addresses(&self) -> io::Result<Vec<u64>> {
-        let mut addresses: Vec<u64> = Vec::new();
-        for addy in self.start_address..self.end_address {
-            addresses.push(addy);
+        for page in pages {
+            if (page.start_address..page.end_address).contains(&address) {
+                return Ok(page);
+            }
         }
 
-        Ok(addresses)
+        tracing::error!(
+            address,
+            "get_page_from_address failed to find page for address"
+        );
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Failed to find page from address",
+        ))
     }
-}
-
-impl ProcessPlatform {
     /* returns all availabe pages, including guarded & mapped libraries */
     pub fn get_all_pages(&self) -> io::Result<Vec<Page>> {
         let mut pages: Vec<Page> = Vec::new();
@@ -117,9 +117,9 @@ impl ProcessPlatform {
             iteration_count += 1;
 
             tracing::info!(
-                iteration = iteration_count,
-                context = jordan,
+                i = iteration_count,
                 perms = line_permissions_as_string,
+                context = jordan,
                 "get_all_pages successfully read line"
             );
 
@@ -134,42 +134,20 @@ impl ProcessPlatform {
         Ok(pages)
     }
 
-    pub fn get_readable_regions(&self) -> io::Result<Vec<(usize, usize)>> {
-        let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;
-        let mut regions = Vec::new();
+    pub fn get_readable_pages(&self) -> io::Result<Vec<Page>> {
+        let pages = self.get_all_pages()?;
+        let mut readable_pages: Vec<Page> = Vec::new();
 
-        for line in maps.lines() {
-            let mut it = line.split_whitespace();
-            let (Some(range), Some(perms)) = (it.next(), it.next()) else {
-                continue;
-            };
-            if !perms.starts_with('r') {
-                continue;
+        for page in pages {
+            match page.protection_flag {
+                ProtectionType::PAGE_READONLY => readable_pages.push(page),
+                ProtectionType::PAGE_READWRITE => readable_pages.push(page),
+                ProtectionType::PAGE_EXECUTE_READWRITE => readable_pages.push(page),
+                _ => {}
             }
-            let path = it.nth(3).unwrap_or("");
-            if matches!(path, "[vvar]" | "[vvar_vclock]" | "[vsyscall]")
-                || path.starts_with("/dev/")
-            {
-                continue;
-            }
-            let Some((s, e)) = range.split_once('-') else {
-                continue;
-            };
-            let (Ok(s), Ok(e)) = (usize::from_str_radix(s, 16), usize::from_str_radix(e, 16))
-            else {
-                continue;
-            };
-            regions.push((s, e));
         }
-        Ok(regions)
-    }
 
-    pub fn get_all_addresses(&self) -> io::Result<Vec<usize>> {
-        let mut addrs = Vec::new();
-        for (s, e) in self.get_readable_regions()? {
-            addrs.extend(s..e);
-        }
-        Ok(addrs)
+        Ok(readable_pages)
     }
 
     pub fn get_mapped_pages(&self) -> io::Result<Vec<u64>> {

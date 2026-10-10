@@ -18,7 +18,7 @@ impl ProcessPlatform {
                 return Ok(base);
             }
         }
-        tracing::warn!(module, "get_module_base failed");
+        tracing::error!(module, "get_module_base failed");
         Err(io::Error::new(
             io::ErrorKind::NotFound,
             "Failed to find module base",

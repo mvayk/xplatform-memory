@@ -1,6 +1,7 @@
 pub mod map;
 pub mod memory;
 pub mod module;
+pub mod page;
 pub mod pid;
 pub mod platform;
 pub mod protection;

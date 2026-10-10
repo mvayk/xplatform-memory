@@ -1,4 +1,5 @@
 use crate::memory::definitions::ProtectionType;
+use crate::memory::linux::page;
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::trace::SyscallInjector;
 use ProtectionType::*;
@@ -31,7 +32,8 @@ pub fn protection_to_string<'a>(protection: ProtectionType) -> io::Result<&'a st
 
 impl ProcessPlatform {
     pub fn query_address_protection(&self, address: u64) -> io::Result<ProtectionType> {
-        Ok(ProtectionType::PAGE_EXECUTE)
+        let page = self.get_page_from_address(address)?;
+        Ok(page.protection_flag)
     }
 
     pub fn protect_memory(

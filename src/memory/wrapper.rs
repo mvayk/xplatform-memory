@@ -1,10 +1,11 @@
-use crate::memory::definitions::ProtectionType;
 use std::io;
 
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
 
 #[cfg(target_os = "linux")]
+use crate::memory::definitions::ProtectionType;
+use crate::memory::linux::page::Page;
 use crate::memory::linux::platform;
 
 pub struct Process {
@@ -56,20 +57,21 @@ impl Process {
         self.process.get_all_addresses()
     }
 
-    pub fn get_all_pages(&self) -> io::Result<Vec<u64>> {
-        self.process.get_mapped_pages()
+    pub fn get_all_pages(&self) -> io::Result<Vec<Page>> {
+        self.process.get_all_pages()
     }
 
     pub fn get_readable_regions(&self) -> io::Result<Vec<(usize, usize)>> {
         self.process.get_readable_regions()
     }
 
-    pub fn get_memory_protection(&self) -> io::Result<ProtectionType> {
-        Ok(ProtectionType::PAGE_EXECUTE)
+    pub fn get_memory_protection(&self, address: u64) -> io::Result<ProtectionType> {
+        self.process.query_address_protection(address)
     }
+}
 
-    pub fn exit(&self) -> io::Result<()> {
+impl Drop for Process {
+    fn drop(&mut self) {
         tracing::info!("xplatform-memory exited");
-        Ok(())
     }
 }

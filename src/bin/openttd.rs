@@ -1,26 +1,5 @@
-use std::{
-    fs::File,
-    io::{self, BufWriter, Write},
-};
+use std::io::{self};
 use xplatform_memory::memory::{definitions::ProtectionType, wrapper::*};
-
-fn dump_stuff(process: &Process) -> io::Result<()> {
-    let readable_regions = process.get_readable_regions()?;
-    let mut file = BufWriter::new(File::create("readable_regions.bin")?);
-    for region in &readable_regions {
-        writeln!(file, "{:#x}-{:#x}", region.0, region.1)?;
-    }
-    file.flush()?;
-
-    let mem_pages = process.get_all_pages()?;
-    let mut file = BufWriter::new(File::create("mem_pages.bin")?);
-    for region in &mem_pages {
-        writeln!(file, "{:#x}", region)?;
-    }
-    file.flush()?;
-
-    Ok(())
-}
 
 pub fn main() -> io::Result<()> {
     let process_name = "openttd.exe";
@@ -39,6 +18,7 @@ pub fn main() -> io::Result<()> {
     //process.read_memory::<i64>(money_addy)?;
 
     process.write_memory(money_addy, &100000000i64)?;
+    process.get_all_pages()?;
 
     //dump_stuff(&process)?;
     // let addy = [0x1400000].to_vec();
@@ -51,5 +31,5 @@ pub fn main() -> io::Result<()> {
     //     ProtectionType::PAGE_EXECUTE_READWRITE,
     // )?;
 
-    process.exit()
+    Ok(())
 }
