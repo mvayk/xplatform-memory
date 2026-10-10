@@ -19,6 +19,7 @@ pub fn main() -> io::Result<()> {
 
     process.write_memory(money_addy, &100000000i64)?;
     process.get_all_pages()?;
+    process.get_memory_protection(0x14000)?;
 
     //dump_stuff(&process)?;
     // let addy = [0x1400000].to_vec();

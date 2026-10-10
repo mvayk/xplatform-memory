@@ -15,7 +15,7 @@ impl PtraceGuard {
         let guard = Self { pid };
         match waitpid(pid, None).map_err(io::Error::from)? {
             WaitStatus::Stopped(..) => {
-                tracing::warn!(pid = pid.as_raw(), "ptrace attached");
+                tracing::info!(pid = pid.as_raw(), "ptrace attached");
                 Ok(guard)
             }
             other => {
@@ -32,7 +32,7 @@ impl PtraceGuard {
 impl Drop for PtraceGuard {
     fn drop(&mut self) {
         let _ = ptrace::detach(self.pid, None);
-        tracing::warn!(pid = self.pid.as_raw(), "ptrace detached");
+        tracing::info!(pid = self.pid.as_raw(), "ptrace detached");
     }
 }
 

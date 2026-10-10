@@ -1,7 +1,4 @@
-/*
- TODO: REFACTOR NOW
-*/
-use crate::memory::definitions::ProtectionType::{self, PAGE_EXECUTE_READ};
+use crate::memory::definitions::ProtectionType;
 use crate::memory::linux::page::Page;
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::protection::protection_to_string;
@@ -12,7 +9,14 @@ fn parse_line(line: &str) -> io::Result<(u64, u64, &str)> {
     let (s, e) = it.next().unwrap().split_once('-').unwrap();
     let perms = it.next().unwrap();
 
-    tracing::debug!(s = s, e = e, perms = perms, "parse_line called");
+    tracing::trace!(
+        s = s,
+        e = e,
+        perms = perms,
+        context = line,
+        "parse_line called"
+    );
+
     Ok((
         u64::from_str_radix(s, 16).unwrap(),
         u64::from_str_radix(e, 16).unwrap(),
@@ -84,6 +88,7 @@ impl ProcessPlatform {
             "Failed to find page from address",
         ))
     }
+
     /* returns all availabe pages, including guarded & mapped libraries */
     pub fn get_all_pages(&self) -> io::Result<Vec<Page>> {
         let mut pages: Vec<Page> = Vec::new();
@@ -116,7 +121,7 @@ impl ProcessPlatform {
             let line_permissions_as_string = protection_to_string(line_permissions)?;
             iteration_count += 1;
 
-            tracing::info!(
+            tracing::trace!(
                 i = iteration_count,
                 perms = line_permissions_as_string,
                 context = jordan,
@@ -150,6 +155,7 @@ impl ProcessPlatform {
         Ok(readable_pages)
     }
 
+    /* refactor */
     pub fn get_mapped_pages(&self) -> io::Result<Vec<u64>> {
         let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
         let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;

@@ -53,16 +53,12 @@ impl Process {
         Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
     }
 
-    pub fn get_all_addresses(&self) -> io::Result<Vec<usize>> {
-        self.process.get_all_addresses()
-    }
-
     pub fn get_all_pages(&self) -> io::Result<Vec<Page>> {
         self.process.get_all_pages()
     }
 
-    pub fn get_readable_regions(&self) -> io::Result<Vec<(usize, usize)>> {
-        self.process.get_readable_regions()
+    pub fn get_readable_maps(&self) -> io::Result<Vec<Page>> {
+        self.process.get_readable_pages()
     }
 
     pub fn get_memory_protection(&self, address: u64) -> io::Result<ProtectionType> {

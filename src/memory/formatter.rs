@@ -21,11 +21,11 @@ where
         let level = *event.metadata().level();
 
         let level_str = match level {
-            Level::ERROR => "ERROR".red().bold().to_string(),
+            Level::ERROR => "ERRO".red().bold().to_string(),
             Level::WARN => "WARN".yellow().bold().to_string(),
             Level::INFO => "INFO".green().to_string(),
-            Level::DEBUG => "DEBUG".blue().to_string(),
-            Level::TRACE => "TRACE".magenta().to_string(),
+            Level::DEBUG => "DEBG".blue().to_string(),
+            Level::TRACE => "TRCE".magenta().to_string(),
         };
 
         write!(
@@ -42,10 +42,17 @@ where
 }
 
 pub fn construct_formatter() {
+    let default_level = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "info"
+    };
+
     tracing_subscriber::fmt()
         .event_format(CustomFormatter)
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| default_level.into()),
         )
         .init();
 }

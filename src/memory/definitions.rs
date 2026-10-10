@@ -1,5 +1,3 @@
-use std::io;
-
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
 pub enum ProtectionType {
