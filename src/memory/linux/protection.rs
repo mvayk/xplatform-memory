@@ -6,16 +6,6 @@ use libc::{PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE};
 use nix::unistd::Pid;
 use std::io;
 
-#[repr(u8)]
-#[allow(non_camel_case_types)]
-#[derive(Clone, Copy)]
-pub enum MprotectType {
-    PROT_NONE = 0x00,
-    PROT_READ = 0x01,
-    PROT_WRITE = 0x02,
-    PROT_EXEC = 0x04,
-}
-
 fn match_protection(p: ProtectionType) -> io::Result<i32> {
     Ok(match p {
         PAGE_NOACCESS => PROT_NONE,
@@ -27,20 +17,15 @@ fn match_protection(p: ProtectionType) -> io::Result<i32> {
     })
 }
 
-fn protection_to_string<'a>(protection: ProtectionType) -> io::Result<&'a str> {
+pub fn protection_to_string<'a>(protection: ProtectionType) -> io::Result<&'a str> {
     match protection {
         PAGE_NOACCESS => return Ok("PAGE_NOACCESS"),
         PAGE_EXECUTE => return Ok("PAGE_EXECUTE"),
         PAGE_EXECUTE_READ => return Ok("PAGE_EXECUTE_READ"),
         PAGE_EXECUTE_READWRITE => return Ok("PAGE_EXECUTE_READWRITE"),
         PAGE_READONLY => return Ok("PAGE_READONLY"),
-        PAGE_READWRITE => return Ok("PAGE_EXECUTE_READWRITE"),
-        _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "failed to convert protectiontype to string: unknown flag provided",
-            ));
-        }
+        PAGE_READWRITE => return Ok("PAGE_READWRITE"),
+        //_ => { return Err(io::Error::new( io::ErrorKind::InvalidInput, "failed to convert protectiontype to string: unknown flag provided",)); }
     }
 }
 

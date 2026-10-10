@@ -3,7 +3,7 @@
 */
 use crate::memory::definitions::{Page, ProtectionType};
 use crate::memory::linux::platform::ProcessPlatform;
-use crate::memory::linux::protection::MprotectType;
+use crate::memory::linux::protection::protection_to_string;
 use std::{fs, io};
 
 fn parse_line(line: &str) -> io::Result<(u64, u64, &str)> {
@@ -27,13 +27,16 @@ fn parse_permissions(parsed_line: (u64, u64, &str)) -> io::Result<ProtectionType
         match c {
             b'-' => Ok(false),
             c if c == on => Ok(true),
-            _ => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "unknown permission char {:?} in {:?}",
-                    c as char, permission
-                ),
-            )),
+            _ => {
+                tracing::error!()
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "unknown permission char {:?} in {:?}",
+                        c as char, permission
+                    ),
+                ))
+            }
         }
     };
 
@@ -101,8 +104,6 @@ impl ProcessPlatform {
         };
 
         /*
-        each line broken up in maps to determine protection flag, start and end addresses to create page struct
-
         6ffffff31000-6ffffffa7000 r-xp 00001000 08:02 109856277                  /home/mvayk/.local/share/Steam/steamapps/common/Proton - Experimental/files/lib/wine/x86_64-windows/ntdll.dll
         start_address-end_address permission
         */
@@ -112,14 +113,22 @@ impl ProcessPlatform {
         for jordan in maps.lines() {
             let line = parse_line(jordan)?;
             line_permissions = parse_permissions(line)?;
+            let line_permissions_as_string = protection_to_string(line_permissions)?;
             iteration_count += 1;
 
             tracing::info!(
                 iteration = iteration_count,
                 context = jordan,
-                perms = line_permissions as &str,
-                "get_all_pages ok"
+                perms = line_permissions_as_string,
+                "get_all_pages successfully read line"
             );
+
+            pages.push(Page {
+                size: 0u64,
+                protection_flag: line_permissions,
+                start_address: line.0,
+                end_address: line.1,
+            });
         }
 
         Ok(pages)

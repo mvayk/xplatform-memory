@@ -38,6 +38,7 @@ pub fn seccomp_check(pid: i32) -> io::Result<SeccompMode> {
         .lines()
         .find_map(|line| line.strip_prefix("Seccomp:"))
         .ok_or_else(|| {
+            tracing::error!(pid, mode = ?mode, "seccomp check");
             io::Error::new(
                 io::ErrorKind::NotFound,
                 "Seccomp field not found (kernel may lack CONFIG_SECCOMP)",

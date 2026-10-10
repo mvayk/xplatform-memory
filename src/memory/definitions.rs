@@ -17,7 +17,8 @@ pub struct Page {
     pub end_address: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SeccompMode {
     Disabled = 0,
     Strict = 1,
