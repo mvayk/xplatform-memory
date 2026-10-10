@@ -156,7 +156,7 @@ impl ProcessPlatform {
     }
 
     /* refactor */
-    pub fn get_mapped_pages(&self) -> io::Result<Vec<u64>> {
+    pub fn get_filtered_pages(&self) -> io::Result<Vec<Page>> {
         let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
         let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;
         let mut pages = Vec::new();

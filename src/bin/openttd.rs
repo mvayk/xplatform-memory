@@ -1,4 +1,5 @@
 use std::io::{self};
+use xplatform_memory::memory::linux::page::Page;
 use xplatform_memory::memory::{definitions::ProtectionType, wrapper::*};
 
 pub fn main() -> io::Result<()> {
@@ -26,11 +27,11 @@ pub fn main() -> io::Result<()> {
     // process.protect_memory(addy, 1usize, ProtectionType::PAGE_EXECUTE_READWRITE)?;
 
     /* dont do this. */
-    // process.protect_memory(
-    //     process.get_all_pages()?,
-    //     1usize,
-    //     ProtectionType::PAGE_EXECUTE_READWRITE,
-    // )?;
+    let mut regions: Vec<u64> = Vec::new();
+    for page in process.get_all_pages()? {
+        regions.push(page.start_address);
+    }
+    process.protect_memory(regions, 1usize, ProtectionType::PAGE_EXECUTE_READWRITE)?;
 
     Ok(())
 }
