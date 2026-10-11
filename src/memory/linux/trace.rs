@@ -100,7 +100,7 @@ impl SyscallInjector {
             tracing::error!(pid = pid.as_raw(), nr, ret, "remote syscall returned error");
             Err(io::Error::from_raw_os_error(-ret as i32))
         } else {
-            tracing::info!(pid = pid.as_raw(), nr, ret, "remote syscall ok");
+            tracing::debug!(pid = pid.as_raw(), nr, ret, "remote syscall successful");
             Ok(ret)
         }
     }

@@ -1,187 +1,502 @@
 use crate::memory::definitions::ProtectionType;
-use crate::memory::linux::page::Page;
+use crate::memory::linux::page::{Page, page_align_down, page_size};
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::protection::protection_to_string;
+use crate::memory::utils::Hex;
+use std::ops::Range;
 use std::{fs, io};
 
-fn parse_line(line: &str) -> io::Result<(u64, u64, &str)> {
-    let mut it = line.split_whitespace();
-    let (s, e) = it.next().unwrap().split_once('-').unwrap();
-    let perms = it.next().unwrap();
+const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
+const PAGE_ADDRESS_WARN_THRESHOLD: u64 = 10_000_000;
 
-    tracing::trace!(
-        s = s,
-        e = e,
-        perms = perms,
-        context = line,
-        "parse_line called"
-    );
-
-    Ok((
-        u64::from_str_radix(s, 16).unwrap(),
-        u64::from_str_radix(e, 16).unwrap(),
-        perms,
-    ))
+#[derive(Clone)]
+pub struct MapEntry {
+    pub start_address: u64,
+    pub end_address: u64,
+    pub protection_flag: ProtectionType,
+    pub shared: bool,
+    pub offset: u64,
+    pub dev: (u32, u32),
+    pub inode: u64,
+    pub module: String,
 }
 
-fn parse_permissions(parsed_line: (u64, u64, &str)) -> io::Result<ProtectionType> {
-    let permission = parsed_line.2;
-    let bytes = permission.as_bytes();
+impl MapEntry {
+    pub fn size(&self) -> u64 {
+        self.end_address - self.start_address
+    }
 
-    let _ = |c: u8, on: u8| -> io::Result<bool> {
-        match c {
-            b'-' => Ok(false),
-            c if c == on => Ok(true),
-            _ => {
-                tracing::error!(
-                    permission = permission,
-                    bytes = bytes,
-                    "parse_permissions failed"
-                );
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "unknown permission char {:?} in {:?}",
-                        c as char, permission
-                    ),
-                ))
-            }
+    pub fn page_count(&self) -> u64 {
+        self.size() / page_size()
+    }
+
+    pub fn range(&self) -> Range<u64> {
+        self.start_address..self.end_address
+    }
+
+    pub fn contains(&self, address: u64) -> bool {
+        self.range().contains(&address)
+    }
+
+    pub fn range_string(&self) -> String {
+        format!("{:x}-{:x}", self.start_address, self.end_address)
+    }
+
+    pub fn pages(&self) -> impl Iterator<Item = u64> {
+        let step = page_size();
+
+        if self.size() % step != 0 {
+            tracing::warn!(
+                range = %self.range_string(),
+                size = self.size(),
+                page_size = step,
+                "region size is not a multiple of the page size, last partial page will be included"
+            );
+        }
+
+        tracing::trace!(
+            range = %self.range_string(),
+            pages = self.page_count(),
+            module = self.module.as_str(),
+            "MapEntry::pages iterating"
+        );
+
+        self.range().step_by(step as usize)
+    }
+    pub fn page_at(&self, address: u64) -> Option<Page> {
+        if !self.contains(address) {
+            tracing::trace!(
+                address = %Hex(address),
+                range = %self.range_string(),
+                "page_at: address not in this region"
+            );
+            return None;
+        }
+
+        let size = page_size();
+        let aligned = page_align_down(address);
+        let start_address = aligned.max(self.start_address);
+        let end_address = (aligned + size).min(self.end_address);
+        let index_in_region = (start_address - self.start_address) / size;
+
+        tracing::trace!(
+            address = %Hex(address),
+            page_start = %Hex(start_address),
+            page_end = %Hex(end_address),
+            index_in_region,
+            "page_at: resolved page"
+        );
+
+        Some(Page {
+            start_address,
+            end_address,
+            index_in_region,
+            region: self.clone(),
+        })
+    }
+
+    pub fn is_readable(&self) -> bool {
+        matches!(
+            self.protection_flag,
+            ProtectionType::PAGE_READONLY
+                | ProtectionType::PAGE_READWRITE
+                | ProtectionType::PAGE_EXECUTE_READ
+                | ProtectionType::PAGE_EXECUTE_READWRITE
+        )
+    }
+
+    pub fn is_writable(&self) -> bool {
+        matches!(
+            self.protection_flag,
+            ProtectionType::PAGE_READWRITE | ProtectionType::PAGE_EXECUTE_READWRITE
+        )
+    }
+
+    pub fn is_special(&self) -> bool {
+        SPECIAL_REGIONS.contains(&self.module.as_str())
+    }
+}
+
+fn invalid(what: &str, line: &str) -> io::Error {
+    tracing::error!(context = line, "maps parse failed: {what}");
+    io::Error::new(io::ErrorKind::InvalidData, format!("{what} in {line:?}"))
+}
+
+fn parse_permissions(perms: &str, line: &str) -> io::Result<(ProtectionType, bool)> {
+    let bytes = perms.as_bytes();
+    if bytes.len() != 4 {
+        tracing::error!(
+            permission = perms,
+            length = bytes.len(),
+            "parse_permissions expected exactly 4 characters"
+        );
+        return Err(invalid("bad permissions length", line));
+    }
+
+    let protection = match &bytes[..3] {
+        b"---" => ProtectionType::PAGE_NOACCESS,
+        b"r--" => ProtectionType::PAGE_READONLY,
+        b"rw-" => ProtectionType::PAGE_READWRITE,
+        b"--x" => ProtectionType::PAGE_EXECUTE,
+        b"r-x" => ProtectionType::PAGE_EXECUTE_READ,
+        b"rwx" => ProtectionType::PAGE_EXECUTE_READWRITE,
+        _ => {
+            tracing::error!(
+                permission = perms,
+                "parse_permissions failed to determine protection flags"
+            );
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("no ProtectionType for permissions {perms:?}"),
+            ));
         }
     };
 
-    match &bytes[..3] {
-        b"---" => Ok(ProtectionType::PAGE_NOACCESS),
-        b"r--" => Ok(ProtectionType::PAGE_READONLY),
-        b"rw-" => Ok(ProtectionType::PAGE_READWRITE),
-        b"--x" => Ok(ProtectionType::PAGE_EXECUTE),
-        b"r-x" => Ok(ProtectionType::PAGE_EXECUTE_READ),
-        b"rwx" => Ok(ProtectionType::PAGE_EXECUTE_READWRITE),
-        _ => {
+    let shared = match bytes[3] {
+        b'p' => false,
+        b's' => true,
+        other => {
             tracing::error!(
-                permission = permission,
-                "parse_permissions failed to determine protection flags"
+                permission = perms,
+                flag = %(other as char),
+                "parse_permissions got an unknown private/shared flag"
             );
-            Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                format!("no ProtectionType for permissions {:?}", permission),
-            ))
+            return Err(invalid("bad private/shared flag", line));
         }
+    };
+
+    tracing::trace!(
+        permission = perms,
+        shared = shared,
+        protection = ?protection_to_string(protection).ok(),
+        "parse_permissions ok"
+    );
+
+    Ok((protection, shared))
+}
+
+fn parse_dev(dev: &str, line: &str) -> io::Result<(u32, u32)> {
+    let (major, minor) = dev
+        .split_once(':')
+        .ok_or_else(|| invalid("bad dev", line))?;
+    let major = u32::from_str_radix(major, 16).map_err(|_| invalid("bad dev major", line))?;
+    let minor = u32::from_str_radix(minor, 16).map_err(|_| invalid("bad dev minor", line))?;
+    Ok((major, minor))
+}
+
+fn parse_line(line: &str) -> io::Result<MapEntry> {
+    let mut it = line.splitn(6, ' ');
+
+    let range = it.next().ok_or_else(|| invalid("missing range", line))?;
+    let perms = it.next().ok_or_else(|| invalid("missing perms", line))?;
+    let offset = it.next().ok_or_else(|| invalid("missing offset", line))?;
+    let dev = it.next().ok_or_else(|| invalid("missing dev", line))?;
+    let inode = it.next().ok_or_else(|| invalid("missing inode", line))?;
+    let module = it.next().unwrap_or("").trim();
+
+    let (s, e) = range
+        .split_once('-')
+        .ok_or_else(|| invalid("bad address range", line))?;
+
+    let start_address =
+        u64::from_str_radix(s, 16).map_err(|_| invalid("bad start address", line))?;
+    let end_address = u64::from_str_radix(e, 16).map_err(|_| invalid("bad end address", line))?;
+    if end_address < start_address {
+        return Err(invalid("end address before start address", line));
     }
+    if end_address == start_address {
+        tracing::warn!(context = line, "parse_line found a zero-sized region");
+    }
+
+    let offset = u64::from_str_radix(offset, 16).map_err(|_| invalid("bad offset", line))?;
+    let inode = inode
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| invalid("bad inode", line))?;
+
+    let (protection_flag, shared) = parse_permissions(perms, line)?;
+    let dev = parse_dev(dev, line)?;
+
+    tracing::trace!(
+        start = %Hex(start_address),
+        end = %Hex(end_address),
+        perms = perms,
+        offset = %Hex(offset),
+        dev = dev.0 as u64 * 256 + dev.1 as u64,
+        inode = inode,
+        path = module,
+        context = line,
+        "parse_line ok"
+    );
+
+    Ok(MapEntry {
+        start_address,
+        end_address,
+        protection_flag,
+        shared,
+        offset,
+        dev,
+        inode,
+        module: module.to_owned(),
+    })
 }
 
 impl ProcessPlatform {
-    pub fn get_page_from_address(&self, address: u64) -> io::Result<Page> {
-        let pages = self.get_all_pages()?;
-
-        for page in pages {
-            if (page.start_address..page.end_address).contains(&address) {
-                return Ok(page);
-            }
-        }
-
-        tracing::error!(
-            address,
-            "get_page_from_address failed to find page for address"
+    pub fn get_all_regions(&self) -> io::Result<Vec<MapEntry>> {
+        let path = format!("/proc/{}/maps", self.pid);
+        tracing::debug!(
+            pid = self.pid,
+            path = path.as_str(),
+            "get_all_regions reading maps"
         );
-        Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "Failed to find page from address",
-        ))
-    }
 
-    /* returns all availabe pages, including guarded & mapped libraries */
-    pub fn get_all_pages(&self) -> io::Result<Vec<Page>> {
-        let mut pages: Vec<Page> = Vec::new();
+        let maps = fs::read_to_string(&path).map_err(|e| {
+            tracing::error!(
+                pid = self.pid,
+                path = path.as_str(),
+                kind = ?e.kind(),
+                error = %e,
+                "get_all_regions failed to read maps file (is the process still running? permissions?)"
+            );
+            e
+        })?;
 
-        let maps = match fs::read_to_string(format!("/proc/{}/maps", self.pid)) {
-            Ok(maps) => maps,
-            Err(e) => {
+        let mut regions = Vec::new();
+        let mut total_bytes: u64 = 0;
+
+        for (i, line) in maps.lines().enumerate() {
+            let line_number = i + 1;
+
+            if line.trim().is_empty() {
+                tracing::trace!(
+                    pid = self.pid,
+                    line_number,
+                    "get_all_regions skipping empty line"
+                );
+                continue;
+            }
+
+            let entry = parse_line(line).map_err(|e| {
                 tracing::error!(
                     pid = self.pid,
+                    line_number,
                     error = %e,
-                    "get_all_pages failed to read maps file"
+                    context = line,
+                    "get_all_regions failed to parse line"
                 );
-                return Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "get_all_pages failed to find maps file",
-                ));
-            }
-        };
-
-        /*
-        6ffffff31000-6ffffffa7000 r-xp 00001000 08:02 109856277                  /home/mvayk/.local/share/Steam/steamapps/common/Proton - Experimental/files/lib/wine/x86_64-windows/ntdll.dll
-        start_address-end_address permission
-        */
-
-        let mut line_permissions: ProtectionType;
-        let mut iteration_count = 0;
-        for jordan in maps.lines() {
-            let line = parse_line(jordan)?;
-            line_permissions = parse_permissions(line)?;
-            let line_permissions_as_string = protection_to_string(line_permissions)?;
-            iteration_count += 1;
+                e
+            })?;
 
             tracing::trace!(
-                i = iteration_count,
-                perms = line_permissions_as_string,
-                context = jordan,
-                "get_all_pages successfully read line"
+                pid = self.pid,
+                line_number,
+                range = %entry.range_string(),
+                perms = ?protection_to_string(entry.protection_flag).ok(),
+                module = entry.module.as_str(),
+                "get_all_regions successfully read line"
             );
 
-            pages.push(Page {
-                size: 0u64,
-                protection_flag: line_permissions,
-                start_address: line.0,
-                end_address: line.1,
-            });
+            total_bytes += entry.size();
+            regions.push(entry);
         }
 
-        Ok(pages)
+        if regions.is_empty() {
+            tracing::warn!(
+                pid = self.pid,
+                "get_all_regions found no regions (process may have exited)"
+            );
+        } else {
+            tracing::info!(
+                pid = self.pid,
+                regions = regions.len(),
+                total_bytes,
+                "get_all_regions successful"
+            );
+        }
+
+        Ok(regions)
     }
 
-    pub fn get_readable_pages(&self) -> io::Result<Vec<Page>> {
-        let pages = self.get_all_pages()?;
-        let mut readable_pages: Vec<Page> = Vec::new();
-
-        for page in pages {
-            match page.protection_flag {
-                ProtectionType::PAGE_READONLY => readable_pages.push(page),
-                ProtectionType::PAGE_READWRITE => readable_pages.push(page),
-                ProtectionType::PAGE_EXECUTE_READWRITE => readable_pages.push(page),
-                _ => {}
+    pub fn get_region_from_address(&self, address: u64) -> io::Result<MapEntry> {
+        match self
+            .get_all_regions()?
+            .into_iter()
+            .find(|region| region.contains(address))
+        {
+            Some(region) => {
+                tracing::debug!(
+                    pid = self.pid,
+                    address = %Hex(address),
+                    range = %region.range_string(),
+                    module = region.module.as_str(),
+                    "get_region_from_address found region"
+                );
+                Ok(region)
+            }
+            None => {
+                tracing::error!(
+                    pid = self.pid,
+                    address = %Hex(address),
+                    "get_region_from_address failed to find region for address"
+                );
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Failed to find region from address",
+                ))
             }
         }
-
-        Ok(readable_pages)
     }
 
-    /* refactor */
-    pub fn get_filtered_pages(&self) -> io::Result<Vec<Page>> {
-        let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
-        let maps = fs::read_to_string(format!("/proc/{}/maps", self.pid))?;
-        let mut pages = Vec::new();
+    pub fn get_page_from_address(&self, address: u64) -> io::Result<Page> {
+        tracing::debug!(
+            pid = self.pid,
+            address = %Hex(address),
+            "get_page_from_address looking up page"
+        );
 
-        for line in maps.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 2 {
-                continue;
-            }
-            if parts.len() >= 6
-                && matches!(
-                    parts[5],
-                    "[vvar]" | "[vvar_vclock]" | "[vdso]" | "[vsyscall]"
-                )
-            {
-                continue;
-            }
-            let Some((s, e)) = parts[0].split_once('-') else {
-                continue;
-            };
-            let (Ok(s), Ok(e)) = (u64::from_str_radix(s, 16), u64::from_str_radix(e, 16)) else {
-                continue;
-            };
-            pages.extend((s..e).step_by(page as usize));
+        let region = self.get_region_from_address(address)?;
+
+        let page = region.page_at(address).ok_or_else(|| {
+            tracing::error!(
+                pid = self.pid,
+                address = %Hex(address),
+                range = %region.range_string(),
+                "get_page_from_address found a region but page_at returned None"
+            );
+            io::Error::new(
+                io::ErrorKind::Other,
+                "region contained address but no page found",
+            )
+        })?;
+
+        tracing::info!(
+            pid = self.pid,
+            address = %Hex(address),
+            page_start = %Hex(page.start_address),
+            index_in_region = page.index_in_region,
+            "get_page_from_address found page"
+        );
+
+        Ok(page)
+    }
+
+    pub fn get_readable_regions(&self) -> io::Result<Vec<MapEntry>> {
+        let all = self.get_all_regions()?;
+        let total = all.len();
+
+        let regions: Vec<MapEntry> = all
+            .into_iter()
+            .filter(|region| {
+                let keep = region.is_readable();
+                if !keep {
+                    tracing::trace!(
+                        range = %region.range_string(),
+                        module = region.module.as_str(),
+                        "get_readable_regions skipping non-readable region"
+                    );
+                }
+                keep
+            })
+            .collect();
+
+        tracing::info!(
+            pid = self.pid,
+            total,
+            kept = regions.len(),
+            "get_readable_regions successful"
+        );
+
+        Ok(regions)
+    }
+
+    pub fn get_filtered_regions(&self) -> io::Result<Vec<MapEntry>> {
+        let all = self.get_all_regions()?;
+        let total = all.len();
+
+        let regions: Vec<MapEntry> = all
+            .into_iter()
+            .filter(|region| {
+                let keep = !region.is_special();
+                if !keep {
+                    tracing::trace!(
+                        range = %region.range_string(),
+                        module = region.module.as_str(),
+                        "get_filtered_regions skipping special region"
+                    );
+                }
+                keep
+            })
+            .collect();
+
+        tracing::debug!(
+            pid = self.pid,
+            total,
+            kept = regions.len(),
+            "get_filtered_regions successful"
+        );
+
+        Ok(regions)
+    }
+
+    pub fn get_scannable_regions(&self) -> io::Result<Vec<MapEntry>> {
+        let all = self.get_all_regions()?;
+        let total = all.len();
+
+        let regions: Vec<MapEntry> = all
+            .into_iter()
+            .filter(|region| {
+                if region.is_special() {
+                    tracing::trace!(
+                        range = %region.range_string(),
+                        module = region.module.as_str(),
+                        "get_scannable_regions skipping special region"
+                    );
+                    return false;
+                }
+                if !region.is_readable() {
+                    tracing::trace!(
+                        range = %region.range_string(),
+                        module = region.module.as_str(),
+                        "get_scannable_regions skipping non-readable region"
+                    );
+                    return false;
+                }
+                true
+            })
+            .collect();
+
+        let scannable_bytes: u64 = regions.iter().map(MapEntry::size).sum();
+        tracing::info!(
+            pid = self.pid,
+            total,
+            kept = regions.len(),
+            scannable_bytes,
+            "get_scannable_regions successful"
+        );
+
+        Ok(regions)
+    }
+
+    pub fn get_page_addresses(regions: &[MapEntry]) -> Vec<u64> {
+        let expected: u64 = regions.iter().map(MapEntry::page_count).sum();
+
+        if expected > PAGE_ADDRESS_WARN_THRESHOLD {
+            tracing::warn!(
+                regions = regions.len(),
+                expected_pages = expected,
+                "get_page_addresses building large vec expect lag, consider iterating regions instead"
+            );
         }
-        Ok(pages)
+
+        let mut addresses = Vec::with_capacity(expected as usize);
+        addresses.extend(regions.iter().flat_map(|region| region.pages()));
+
+        tracing::info!(
+            regions = regions.len(),
+            pages = addresses.len(),
+            "get_page_addresses successful"
+        );
+
+        addresses
     }
 }

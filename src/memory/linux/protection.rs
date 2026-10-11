@@ -1,4 +1,5 @@
 use crate::memory::definitions::ProtectionType;
+use crate::memory::linux::page::Page;
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::trace::SyscallInjector;
 use ProtectionType::*;
@@ -31,8 +32,8 @@ pub fn protection_to_string<'a>(protection: ProtectionType) -> io::Result<&'a st
 
 impl ProcessPlatform {
     pub fn query_address_protection(&self, address: u64) -> io::Result<ProtectionType> {
-        let page = self.get_page_from_address(address)?;
-        Ok(page.protection_flag)
+        let page: Page = self.get_page_from_address(address)?;
+        Ok(page.get_protection_flag())
     }
 
     pub fn protect_memory(
@@ -49,7 +50,10 @@ impl ProcessPlatform {
                     tracing::error!(addr = format_args!("{addr:#x}"), ret, "mprotect failed");
                     return Err(io::Error::from_raw_os_error(-ret as i32));
                 }
-                Ok(_) => tracing::info!(addr = format_args!("{addr:#x} as {protection:?}"), ""),
+                Ok(_) => tracing::info!(
+                    addr = format_args!("{addr:#x} as {protection:?}"),
+                    "protect_memory"
+                ),
                 Err(e) => {
                     tracing::error!(addr = format_args!("{addr:#x}"), error = %e, "syscall failed");
                     return Err(e);

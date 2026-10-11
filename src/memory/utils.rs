@@ -1,35 +1,24 @@
-use std::io;
+use std::{fmt, io};
 
-pub fn ctx<T, E: std::fmt::Display>(label: &str, r: Result<T, E>) -> io::Result<T> {
-    r.map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{label}: {e}")))
-}
-
-pub fn parse_pattern(pattern: &str) -> Vec<Option<u8>> {
-    pattern
-        .split_whitespace()
-        .map(|b| {
-            if b == "??" || b == "?" {
-                None
-            } else {
-                u8::from_str_radix(b, 16).ok()
-            }
-        })
-        .collect()
-}
-
-pub fn pattern_scan_all(memory: &[u8], pattern: &[Option<u8>]) -> Vec<usize> {
-    if pattern.is_empty() || pattern.len() > memory.len() {
-        return vec![];
+pub struct Hex(pub u64);
+impl fmt::Display for Hex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#x}", self.0)
     }
-    memory
-        .windows(pattern.len())
-        .enumerate()
-        .filter_map(|(i, window)| {
-            let matches = window
-                .iter()
-                .zip(pattern.iter())
-                .all(|(byte, pat)| pat.map_or(true, |p| *byte == p));
-            if matches { Some(i) } else { None }
-        })
-        .collect()
+}
+
+pub fn parse_address(input: &str) -> io::Result<u64> {
+    let trimmed = input.trim();
+    let digits = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+
+    u64::from_str_radix(digits, 16).map_err(|e| {
+        tracing::error!(input = input, error = %e, "parse_address failed");
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{input:?} is not a valid hex address"),
+        )
+    })
 }

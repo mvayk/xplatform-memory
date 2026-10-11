@@ -1,5 +1,4 @@
 use std::io::{self};
-use xplatform_memory::memory::linux::page::Page;
 use xplatform_memory::memory::{definitions::ProtectionType, wrapper::*};
 
 pub fn main() -> io::Result<()> {
@@ -19,7 +18,6 @@ pub fn main() -> io::Result<()> {
     //process.read_memory::<i64>(money_addy)?;
 
     process.write_memory(money_addy, &100000000i64)?;
-    process.get_all_pages()?;
     process.get_memory_protection(0x14000)?;
 
     //dump_stuff(&process)?;
@@ -28,8 +26,8 @@ pub fn main() -> io::Result<()> {
 
     /* dont do this. */
     let mut regions: Vec<u64> = Vec::new();
-    for page in process.get_all_pages()? {
-        regions.push(page.start_address);
+    for map in process.get_all_regions()? {
+        regions.push(map.start_address);
     }
     process.protect_memory(regions, 1usize, ProtectionType::PAGE_EXECUTE_READWRITE)?;
 

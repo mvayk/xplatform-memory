@@ -43,7 +43,7 @@ where
 
 pub fn construct_formatter() {
     let default_level = if cfg!(debug_assertions) {
-        "debug"
+        "trace"
     } else {
         "info"
     };
