@@ -1,8 +1,8 @@
 use crate::memory::definitions::ProtectionType;
+use crate::memory::definitions::{Address, Hex};
 use crate::memory::linux::page::{Page, page_align_down, page_size};
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::protection::protection_to_string;
-use crate::memory::utils::Hex;
 use std::ops::Range;
 use std::{fs, io};
 
@@ -11,8 +11,8 @@ const PAGE_ADDRESS_WARN_THRESHOLD: u64 = 10_000_000;
 
 #[derive(Clone)]
 pub struct MapEntry {
-    pub start_address: u64,
-    pub end_address: u64,
+    pub start_address: Address,
+    pub end_address: Address,
     pub protection_flag: ProtectionType,
     pub shared: bool,
     pub offset: u64,
@@ -30,11 +30,11 @@ impl MapEntry {
         self.size() / page_size()
     }
 
-    pub fn range(&self) -> Range<u64> {
+    pub fn range(&self) -> Range<Address> {
         self.start_address..self.end_address
     }
 
-    pub fn contains(&self, address: u64) -> bool {
+    pub fn contains(&self, address: Address) -> bool {
         self.range().contains(&address)
     }
 
@@ -42,7 +42,7 @@ impl MapEntry {
         format!("{:x}-{:x}", self.start_address, self.end_address)
     }
 
-    pub fn pages(&self) -> impl Iterator<Item = u64> {
+    pub fn pages(&self) -> impl Iterator<Item = Address> {
         let step = page_size();
 
         if self.size() % step != 0 {
@@ -63,7 +63,7 @@ impl MapEntry {
 
         self.range().step_by(step as usize)
     }
-    pub fn page_at(&self, address: u64) -> Option<Page> {
+    pub fn page_at(&self, address: Address) -> Option<Page> {
         if !self.contains(address) {
             tracing::trace!(
                 address = %Hex(address),
@@ -199,8 +199,9 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
         .ok_or_else(|| invalid("bad address range", line))?;
 
     let start_address =
-        u64::from_str_radix(s, 16).map_err(|_| invalid("bad start address", line))?;
-    let end_address = u64::from_str_radix(e, 16).map_err(|_| invalid("bad end address", line))?;
+        Address::from_str_radix(s, 16).map_err(|_| invalid("bad start address", line))?;
+    let end_address =
+        Address::from_str_radix(e, 16).map_err(|_| invalid("bad end address", line))?;
     if end_address < start_address {
         return Err(invalid("end address before start address", line));
     }
@@ -244,12 +245,6 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
 impl ProcessPlatform {
     pub fn get_all_regions(&self) -> io::Result<Vec<MapEntry>> {
         let path = format!("/proc/{}/maps", self.pid);
-        tracing::debug!(
-            pid = self.pid,
-            path = path.as_str(),
-            "get_all_regions reading maps"
-        );
-
         let maps = fs::read_to_string(&path).map_err(|e| {
             tracing::error!(
                 pid = self.pid,
@@ -317,7 +312,7 @@ impl ProcessPlatform {
         Ok(regions)
     }
 
-    pub fn get_region_from_address(&self, address: u64) -> io::Result<MapEntry> {
+    pub fn get_region_from_address(&self, address: Address) -> io::Result<MapEntry> {
         match self
             .get_all_regions()?
             .into_iter()

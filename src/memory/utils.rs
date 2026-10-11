@@ -1,12 +1,4 @@
-use std::{fmt, io};
-
-pub struct Hex(pub u64);
-impl fmt::Display for Hex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#x}", self.0)
-    }
-}
-
+use std::io;
 pub fn parse_address(input: &str) -> io::Result<u64> {
     let trimmed = input.trim();
     let digits = trimmed

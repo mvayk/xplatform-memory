@@ -1,6 +1,5 @@
 #[cfg(target_os = "linux")]
-use crate::memory::definitions::SeccompMode;
-use crate::memory::linux::seccomp::seccomp_check;
+use crate::memory::linux::seccomp::{SeccompMode, seccomp_check};
 use std::io;
 
 pub struct ProcessPlatform {

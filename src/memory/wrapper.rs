@@ -1,12 +1,10 @@
+use crate::memory::definitions::{Module, ProtectionType};
 use std::io;
 
-use crate::memory::linux::map::MapEntry;
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
 
 #[cfg(target_os = "linux")]
-use crate::memory::definitions::ProtectionType;
-use crate::memory::linux::page::Page;
 use crate::memory::linux::platform;
 
 pub struct Process {
@@ -23,8 +21,8 @@ impl Process {
         Ok(Process { pid, process })
     }
 
-    pub fn get_module_base(&self, module: &str) -> io::Result<usize> {
-        self.process.get_module_base(module)
+    pub fn get_module(&self, module_name: &str) -> io::Result<Module> {
+        self.process.get_module(self, module_name)
     }
 
     pub fn read_memory<T: Copy>(&self, address: usize) -> io::Result<T> {
@@ -54,13 +52,13 @@ impl Process {
         Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
     }
 
-    pub fn get_all_regions(&self) -> io::Result<Vec<MapEntry>> {
-        self.process.get_all_regions()
-    }
-
-    pub fn get_readable_regions(&self) -> io::Result<Vec<MapEntry>> {
-        self.process.get_readable_regions()
-    }
+    // pub fn get_all_regions(&self) -> io::Result<Vec<MapEntry>> {
+    //     self.process.get_all_regions()
+    // }
+    //
+    // pub fn get_readable_regions(&self) -> io::Result<Vec<MapEntry>> {
+    //     self.process.get_readable_regions()
+    // }
 
     pub fn get_memory_protection(&self, address: u64) -> io::Result<ProtectionType> {
         self.process.query_address_protection(address)

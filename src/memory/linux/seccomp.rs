@@ -1,5 +1,12 @@
-use crate::memory::definitions::SeccompMode;
 use std::{fs, io, str::FromStr};
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SeccompMode {
+    Disabled = 0,
+    Strict = 1,
+    Filter = 2,
+}
 
 impl TryFrom<u32> for SeccompMode {
     type Error = io::Error;
