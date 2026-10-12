@@ -1,5 +1,5 @@
 use std::io;
-use xplatform_memory::memory::wrapper::*;
+use xplatform_memory::memory::process::*;
 
 pub fn main() -> io::Result<()> {
     let process_name = "TWFC.exe";
@@ -11,7 +11,7 @@ pub fn main() -> io::Result<()> {
     println!("base: {:x}", module_base);
 
     /* tfoc fps unlocker thx for magical address */
-    let max_fps_address = 0x12A03F30usize;
+    let max_fps_address = 0x12A03F30;
 
     process.write_memory(max_fps_address, &260.0f32)?;
     println!(
@@ -33,7 +33,7 @@ pub fn main() -> io::Result<()> {
     */
     /*let allocation_addr = process.allocate_memory(4)?; */
     let cave_addr = 0x12A3CCD0;
-    let fov = 120usize;
+    let fov = 120;
     process.write_memory(cave_addr, &fov)?;
 
     let cave_bytes = (cave_addr as u32).to_le_bytes();

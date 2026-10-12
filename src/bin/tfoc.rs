@@ -1,12 +1,12 @@
 use std::io;
-use xplatform_memory::memory::wrapper::*;
+use xplatform_memory::memory::process::*;
 
 pub fn main() -> io::Result<()> {
     let process_name = "tfoc.exe";
     let process = Process::new(process_name)?;
 
     /* SetMaxTickRate */
-    let max_fps_address = 0x19FB01Cusize;
+    let max_fps_address = 0x19FB01C;
 
     process.write_memory(max_fps_address, &10.0f32)?;
     println!(

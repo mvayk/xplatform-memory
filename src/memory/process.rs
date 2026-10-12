@@ -1,5 +1,9 @@
-use crate::memory::definitions::{Module, ProtectionType};
-use std::{fmt::Debug, io};
+use crate::memory::{
+    definitions::{Address, Module, ProtectionType},
+    linux::memory::Pod,
+};
+
+use std::io;
 
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
@@ -9,44 +13,44 @@ use crate::memory::linux::platform;
 
 pub struct Process {
     pub pid: i32,
-    process: platform::ProcessPlatform,
+    pub inner: platform::ProcessPlatform,
 }
 
 impl Process {
     pub fn new(name: &str) -> io::Result<Self> {
         use crate::memory::formatter::construct_formatter;
-        construct_formatter();
+        construct_formatter(platform::ProcessPlatform::find_pid(name)?);
         let pid = platform::ProcessPlatform::find_pid(name)?;
-        let process = platform::ProcessPlatform::new(pid)?;
-        Ok(Process { pid, process })
+        let inner = platform::ProcessPlatform::new(pid)?;
+        Ok(Process { pid, inner })
     }
 
     pub fn get_module(&self, module_name: &str) -> io::Result<Module<'_>> {
-        let module_platform = self.process.get_module(module_name)?;
+        let module_platform = self.inner.get_module(module_name)?;
 
         Ok(Module {
-            name: module_name.to_string(),
+            name: module_platform.name.to_string(),
             process: self,
-            base_address: module_platform.base_address,
+            address: module_platform.address,
         })
     }
 
-    pub fn read_memory<T: Copy + Debug>(&self, address: usize) -> io::Result<T> {
-        self.process.read_memory(address)
+    pub fn read_memory<T: Pod>(&self, address: Address) -> io::Result<T> {
+        self.inner.read_memory(address)
     }
 
-    pub fn write_memory<T: Copy>(&self, address: usize, value: &T) -> io::Result<()> {
-        self.process.write_memory(address, value)
+    pub fn write_memory<T: Pod>(&self, address: Address, value: &T) -> io::Result<()> {
+        self.inner.write_memory(address, value)
     }
 
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */
     pub fn protect_memory(
         &self,
-        addresses: Vec<u64>,
+        addresses: &[Address],
         length: usize,
         protection: ProtectionType,
     ) -> io::Result<()> {
-        self.process
+        self.inner
             .protect_memory(addresses, length as u64, protection)
     }
 
@@ -58,16 +62,8 @@ impl Process {
         Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
     }
 
-    // pub fn get_all_regions(&self) -> io::Result<Vec<MapEntry>> {
-    //     self.process.get_all_regions()
-    // }
-    //
-    // pub fn get_readable_regions(&self) -> io::Result<Vec<MapEntry>> {
-    //     self.process.get_readable_regions()
-    // }
-
-    pub fn get_memory_protection(&self, address: u64) -> io::Result<ProtectionType> {
-        self.process.query_address_protection(address)
+    pub fn get_memory_protection(&self, address: Address) -> io::Result<ProtectionType> {
+        self.inner.query_address_protection(address)
     }
 }
 

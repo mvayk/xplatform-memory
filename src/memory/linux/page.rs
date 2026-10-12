@@ -72,10 +72,10 @@ impl fmt::Display for Page {
             self.region.page_count(),
             self.region.start_address,
             self.region.end_address,
-            if self.region.module.name.is_empty() {
+            if self.region.module_name.is_empty() {
                 "anonymous"
             } else {
-                self.region.module.name.as_str()
+                self.region.module_name.as_str()
             },
         )
     }

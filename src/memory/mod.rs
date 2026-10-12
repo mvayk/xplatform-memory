@@ -1,7 +1,7 @@
 pub mod definitions;
 pub mod formatter;
+pub mod process;
 pub mod utils;
-pub mod wrapper;
 
 #[cfg(target_os = "linux")]
 pub mod linux;

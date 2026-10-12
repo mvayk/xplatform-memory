@@ -1,5 +1,5 @@
 use std::io::{self};
-use xplatform_memory::memory::{definitions::ProtectionType, wrapper::*};
+use xplatform_memory::memory::{definitions::ProtectionType, process::*};
 
 pub fn main() -> io::Result<()> {
     // let process_name = "openttd.exe";

@@ -1,5 +1,6 @@
+use crate::memory::definitions::Address;
 use crate::memory::definitions::ProtectionType;
-use crate::memory::definitions::{Address, Hex};
+use crate::memory::formatter::Hex;
 use crate::memory::linux::module::ModuleP;
 use crate::memory::linux::page::{Page, page_align_down, page_size};
 use crate::memory::linux::platform::ProcessPlatform;
@@ -19,7 +20,7 @@ pub struct MapEntry {
     pub offset: u64,
     pub dev: (u32, u32),
     pub inode: u64,
-    pub module: ModuleP,
+    pub module_name: String,
 }
 
 impl MapEntry {
@@ -58,7 +59,7 @@ impl MapEntry {
         tracing::trace!(
             range = %self.range_string(),
             pages = self.page_count(),
-            module = self.module.name.as_str(),
+            module = self.module_name,
             "MapEntry::pages iterating"
         );
 
@@ -114,7 +115,7 @@ impl MapEntry {
     }
 
     pub fn is_special(&self) -> bool {
-        SPECIAL_REGIONS.contains(&self.module.name.as_str())
+        SPECIAL_REGIONS.contains(&self.module_name.as_str())
     }
 }
 
@@ -193,7 +194,7 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
     let offset = it.next().ok_or_else(|| invalid("missing offset", line))?;
     let dev = it.next().ok_or_else(|| invalid("missing dev", line))?;
     let inode = it.next().ok_or_else(|| invalid("missing inode", line))?;
-    let module = it.next().unwrap_or("").trim();
+    let module_name = it.next().unwrap_or("").trim();
 
     let (s, e) = range
         .split_once('-')
@@ -226,15 +227,10 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
         offset = %Hex(offset),
         dev = dev.0 as u64 * 256 + dev.1 as u64,
         inode = inode,
-        path = module,
+        path = module_name,
         context = line,
         "parse_line ok"
     );
-
-    let module_struct = ModuleP {
-        name: module.to_string(),
-        base_address: start_address,
-    };
 
     Ok(MapEntry {
         start_address,
@@ -244,7 +240,7 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
         offset,
         dev,
         inode,
-        module: module_struct,
+        module_name: module_name.to_string(),
     })
 }
 
@@ -293,7 +289,7 @@ impl ProcessPlatform {
                 line_number,
                 range = %entry.range_string(),
                 perms = ?protection_to_string(entry.protection_flag).ok(),
-                module = entry.module.name.as_str(),
+                module = entry.module_name,
                 "get_all_regions successfully read line"
             );
 
@@ -329,7 +325,7 @@ impl ProcessPlatform {
                     pid = self.pid,
                     address = %Hex(address),
                     range = %region.range_string(),
-                    module = region.module.name.as_str(),
+                    module = region.module_name,
                     "get_region_from_address found region"
                 );
                 Ok(region)
@@ -392,7 +388,7 @@ impl ProcessPlatform {
                 if !keep {
                     tracing::trace!(
                         range = %region.range_string(),
-                        module = region.module.name.as_str(),
+                        module = region.module_name,
                         "get_readable_regions skipping non-readable region"
                     );
                 }
@@ -421,7 +417,7 @@ impl ProcessPlatform {
                 if !keep {
                     tracing::trace!(
                         range = %region.range_string(),
-                        module = region.module.name.as_str(),
+                        module = region.module_name,
                         "get_filtered_regions skipping special region"
                     );
                 }
@@ -449,7 +445,7 @@ impl ProcessPlatform {
                 if region.is_special() {
                     tracing::trace!(
                         range = %region.range_string(),
-                        module = region.module.name.as_str(),
+                        module = region.module_name,
                         "get_scannable_regions skipping special region"
                     );
                     return false;
@@ -457,7 +453,7 @@ impl ProcessPlatform {
                 if !region.is_readable() {
                     tracing::trace!(
                         range = %region.range_string(),
-                        module = region.module.name.as_str(),
+                        module = region.module_name,
                         "get_scannable_regions skipping non-readable region"
                     );
                     return false;
@@ -499,5 +495,13 @@ impl ProcessPlatform {
         );
 
         addresses
+    }
+
+    pub fn get_regions_in_range(&self, range: Range<Address>) -> io::Result<Vec<MapEntry>> {
+        Ok(self
+            .get_all_regions()?
+            .into_iter()
+            .filter(|r| r.start_address < range.end && r.end_address > range.start)
+            .collect())
     }
 }

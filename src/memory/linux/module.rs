@@ -1,42 +1,101 @@
-use crate::memory::{definitions::Address, linux::platform::ProcessPlatform};
-use std::{fs, io};
+use crate::memory::{
+    definitions::Address,
+    formatter::Hex,
+    linux::{map::MapEntry, platform::ProcessPlatform},
+};
+use std::ops::Range;
+use std::{fs, io, path::Path};
 
-fn get_module_base(pid: i32, module_name: &str) -> io::Result<Address> {
+fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
     let maps = fs::read_to_string(format!("/proc/{}/maps", pid))?;
     for line in maps.lines() {
-        if line.contains(module_name) {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            let addresses: Vec<&str> = parts[0].split('-').collect();
-            let base = Address::from_str_radix(addresses[0], 16).unwrap();
+        let path = match line.splitn(6, ' ').nth(5) {
+            Some(p) => p.trim(),
+            None => continue,
+        };
 
-            tracing::info!(
-                module_name,
-                base = format_args!("{base:#x}"),
-                "get_module_base successful"
-            );
-            return Ok(base);
+        if !path.starts_with('/') {
+            continue;
+        }
+
+        let matches = path == module_name
+            || Path::new(path)
+                .file_name()
+                .is_some_and(|f| f == module_name);
+
+        if matches {
+            tracing::info!(module_name, path, "get_module_path successful");
+            return Ok(path.to_string());
         }
     }
-    tracing::error!(module_name, "get_module_base failed");
+
+    tracing::error!(module_name, "get_module_path failed");
     Err(io::Error::new(
         io::ErrorKind::NotFound,
-        "Failed to find module base",
+        "Failed to find module path",
     ))
 }
 
 #[derive(Clone)]
-pub struct ModuleP {
-    pub name: String,
-    pub base_address: Address,
+pub struct ModuleP<'a> {
+    pub name: String, /* file path */
+    pub process: &'a ProcessPlatform,
+    pub address: Range<Address>,
+}
+
+impl<'a> ModuleP<'a> {
+    pub fn get_regions(&self) -> io::Result<Vec<MapEntry>> {
+        self.process.get_module_regions(self.name.as_str())
+    }
+
+    pub fn get_range(&self) -> io::Result<Range<Address>> {
+        self.process.get_module_range(self.name.as_str())
+    }
 }
 
 impl ProcessPlatform {
-    pub fn get_module(&self, module_name: &str) -> io::Result<ModuleP> {
-        let base_address: Address = get_module_base(self.pid, module_name)?;
+    pub fn get_module(&self, module_name: &str) -> io::Result<ModuleP<'_>> {
+        let path: String = get_module_path(self.pid, module_name)?;
+        let range = self.get_module_range(path.as_str())?;
+
+        tracing::info!(
+            module_name,
+            path,
+            start = %Hex(range.start),
+            end = %Hex(range.end),
+            self.pid,
+            "get_module successful"
+        );
 
         Ok(ModuleP {
-            name: module_name.to_string(),
-            base_address,
+            name: path,
+            process: self,
+            address: range,
         })
+    }
+
+    pub fn get_module_regions(&self, name: &str) -> io::Result<Vec<MapEntry>> {
+        let regions: Vec<MapEntry> = self
+            .get_all_regions()?
+            .into_iter()
+            .filter(|r| r.module_name == name)
+            .collect();
+
+        if regions.is_empty() {
+            tracing::error!(
+                self.pid,
+                name,
+                "get_module_regions failed to find module regions"
+            );
+            return Err(io::Error::new(io::ErrorKind::NotFound, "module not found"));
+        }
+        Ok(regions)
+    }
+
+    pub fn get_module_range(&self, name: &str) -> io::Result<Range<Address>> {
+        let regions = self.get_module_regions(name)?;
+        let start = regions.iter().map(|r| r.start_address).min().unwrap();
+        let end = regions.iter().map(|r| r.end_address).max().unwrap();
+        Ok(start..end)
     }
 }

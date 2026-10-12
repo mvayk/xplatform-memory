@@ -1,0 +1,3 @@
+- multithread support
+- multi process tracing
+- get regions & pages inside of specific module
