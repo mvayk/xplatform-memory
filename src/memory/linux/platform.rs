@@ -2,6 +2,7 @@
 use crate::memory::linux::seccomp::{SeccompMode, seccomp_check};
 use std::io;
 
+#[derive(Clone, Copy)]
 pub struct ProcessPlatform {
     pub pid: i32,
     pub seccomp_mode: SeccompMode,

@@ -1,5 +1,5 @@
 use crate::memory::definitions::{Module, ProtectionType};
-use std::io;
+use std::{fmt::Debug, io};
 
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
@@ -21,11 +21,17 @@ impl Process {
         Ok(Process { pid, process })
     }
 
-    pub fn get_module(&self, module_name: &str) -> io::Result<Module> {
-        self.process.get_module(self, module_name)
+    pub fn get_module(&self, module_name: &str) -> io::Result<Module<'_>> {
+        let module_platform = self.process.get_module(module_name)?;
+
+        Ok(Module {
+            name: module_name.to_string(),
+            process: self,
+            base_address: module_platform.base_address,
+        })
     }
 
-    pub fn read_memory<T: Copy>(&self, address: usize) -> io::Result<T> {
+    pub fn read_memory<T: Copy + Debug>(&self, address: usize) -> io::Result<T> {
         self.process.read_memory(address)
     }
 

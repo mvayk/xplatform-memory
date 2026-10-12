@@ -1,12 +1,13 @@
+use crate::memory::definitions::{Address, Hex};
 use crate::memory::linux::platform::ProcessPlatform;
 use crate::memory::linux::trace::PtraceGuard;
 use libc::{c_long, c_void, iovec, process_vm_readv, process_vm_writev};
 use nix::{sys::ptrace, unistd::Pid};
 use std::os::unix::fs::FileExt;
-use std::{fs, io, mem, slice};
+use std::{fmt::Debug, fs, io, mem, slice};
 
 impl ProcessPlatform {
-    pub fn read_memory<T: Copy>(&self, address: usize) -> io::Result<T> {
+    pub fn read_memory<T: Copy + Debug>(&self, address: usize) -> io::Result<T> {
         let size = mem::size_of::<T>();
         let mut buffer = mem::MaybeUninit::<T>::uninit();
 
@@ -68,9 +69,12 @@ impl ProcessPlatform {
             ));
         }
 
+        let value: T = unsafe { buffer.assume_init() };
+
         tracing::info!(
             pid = self.pid,
             addr = format_args!("{address:#x}"),
+            ?value,
             size,
             "read_memory successful"
         );

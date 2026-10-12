@@ -6,7 +6,8 @@ pub fn main() -> io::Result<()> {
     let process = Process::new(process_name)?;
     println!("PID: {}", process.pid);
 
-    let module_base = process.get_module_base(process_name)?;
+    let module = process.get_module(process_name)?;
+    let module_base = module.base_address;
     println!("base: {:x}", module_base);
 
     /* tfoc fps unlocker thx for magical address */

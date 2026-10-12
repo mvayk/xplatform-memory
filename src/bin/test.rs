@@ -10,10 +10,10 @@ pub fn main() -> io::Result<()> {
     let module: Module = process.get_module(process_name)?;
 
     // let at_base = process.read_memory(module_base)?;
+    //let maps_file = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
+    //println!("{}", maps_file);
 
-    let pid = process.pid;
-    let maps_file = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
-    println!("{}", maps_file);
+    process.read_memory(module.base_address as usize)?;
 
     Ok(())
 }

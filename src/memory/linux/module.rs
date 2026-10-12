@@ -1,6 +1,4 @@
-use crate::memory::{
-    definitions::Address, definitions::Module, linux::platform::ProcessPlatform, wrapper::Process,
-};
+use crate::memory::{definitions::Address, linux::platform::ProcessPlatform};
 use std::{fs, io};
 
 fn get_module_base(pid: i32, module_name: &str) -> io::Result<Address> {
@@ -26,24 +24,19 @@ fn get_module_base(pid: i32, module_name: &str) -> io::Result<Address> {
     ))
 }
 
-impl<'a> Module<'a> {
-    pub fn new(process: &'a Process, module_name: &str) -> io::Result<Self> {
-        let base_address: Address = get_module_base(process.pid, module_name)?;
-
-        Ok(Module {
-            name: module_name.to_string(),
-            process,
-            base_address,
-        })
-    }
+#[derive(Clone)]
+pub struct ModuleP {
+    pub name: String,
+    pub base_address: Address,
 }
 
 impl ProcessPlatform {
-    pub fn get_module<'a>(
-        &self,
-        process: &'a Process,
-        module_name: &str,
-    ) -> io::Result<Module<'a>> {
-        Module::new(process, module_name)
+    pub fn get_module(&self, module_name: &str) -> io::Result<ModuleP> {
+        let base_address: Address = get_module_base(self.pid, module_name)?;
+
+        Ok(ModuleP {
+            name: module_name.to_string(),
+            base_address,
+        })
     }
 }
