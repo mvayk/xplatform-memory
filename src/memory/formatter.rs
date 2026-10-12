@@ -5,6 +5,13 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields, format::Writer};
 use tracing_subscriber::registry::LookupSpan;
 
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => {
+        tracing::info!(target: "MAIN", $($arg)*)
+    };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Hex(pub u64);
 
@@ -57,14 +64,21 @@ where
         event: &Event<'_>,
     ) -> std::fmt::Result {
         let timestamp = Local::now().format("%H:%M:%S%.3f");
-        let level = *event.metadata().level();
+        //let level = *event.metadata().level();
 
-        let level_str = match level {
-            Level::ERROR => "ERRO".red().bold().to_string(),
-            Level::WARN => "WARN".yellow().bold().to_string(),
-            Level::INFO => "INFO".green().to_string(),
-            Level::DEBUG => "DEBG".blue().to_string(),
-            Level::TRACE => "TRCE".magenta().to_string(),
+        let meta = event.metadata();
+        let level = *meta.level();
+
+        let level_str = if meta.target() == "MAIN" {
+            "MAIN".purple().bold().to_string()
+        } else {
+            match level {
+                Level::ERROR => "ERRO".red().bold().to_string(),
+                Level::WARN => "WARN".yellow().bold().to_string(),
+                Level::INFO => "INFO".green().to_string(),
+                Level::DEBUG => "DEBG".blue().to_string(),
+                Level::TRACE => "TRCE".magenta().to_string(),
+            }
         };
 
         write!(

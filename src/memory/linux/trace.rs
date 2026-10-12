@@ -11,7 +11,8 @@ pub struct PtraceGuard {
 
 impl PtraceGuard {
     pub fn attach(pid: Pid) -> io::Result<Self> {
-        ptrace::attach(pid).map_err(io::Error::from)?;
+        ptrace::attach(pid)
+            .inspect_err(|e| tracing::error!(error = %e, "ptrace failed to attach in guard"))?;
         let guard = Self { pid };
         match waitpid(pid, None).map_err(io::Error::from)? {
             WaitStatus::Stopped(..) => {
@@ -49,13 +50,15 @@ impl SyscallInjector {
 
     pub fn new(pid: Pid) -> io::Result<Self> {
         let guard = PtraceGuard::attach(pid)?;
-        let saved_regs = ptrace::getregs(pid)?;
+        let saved_regs = ptrace::getregs(pid).inspect_err(
+            |e| tracing::error!(error = %e, "SyscallInjector::new failed to save registers"),
+        )?;
         let rip = saved_regs.rip as *mut _;
-        let saved_word = ptrace::read(pid, rip)?;
+        let saved_word = ptrace::read(pid, rip).inspect_err(|e| tracing::error!(error = %e, "SyscallInjector::new failed to read saved instruction pointer"))?;
 
         let mut patched = saved_word.to_le_bytes();
         patched[..3].copy_from_slice(&Self::STUB);
-        ptrace::write(pid, rip, i64::from_le_bytes(patched))?;
+        ptrace::write(pid, rip, i64::from_le_bytes(patched)).inspect_err(|e| tracing::error!(error = %e, "SyscallInjector::new failed to write patch to instruction pointer"))?;
 
         tracing::info!(
             pid = pid.as_raw(),
@@ -82,8 +85,10 @@ impl SyscallInjector {
         regs.r8 = args[4];
         regs.r9 = args[5];
 
-        ptrace::setregs(pid, regs)?;
-        ptrace::cont(pid, None)?;
+        ptrace::setregs(pid, regs)
+            .inspect_err(|e| tracing::error!(error = %e, "syscall failed to set registers"))?;
+        ptrace::cont(pid, None)
+            .inspect_err(|e| tracing::error!(error = %e, "syscall failed to continue process"))?;
         match waitpid(pid, None)? {
             WaitStatus::Stopped(_, SIGTRAP) => {}
             other => {
