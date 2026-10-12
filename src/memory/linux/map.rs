@@ -5,7 +5,7 @@ use crate::linux::protection::protection_to_string;
 use crate::types::Address;
 use crate::types::ProtectionType;
 use std::ops::Range;
-use std::{fs, io};
+use std::{fmt, fs, io};
 
 const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
 const PAGE_ADDRESS_WARN_THRESHOLD: u64 = 10_000_000;
@@ -20,6 +20,25 @@ pub struct MapEntry {
     pub dev: (u32, u32),
     pub inode: u64,
     pub module_name: String,
+}
+
+impl fmt::Display for MapEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let protectiontype = protection_to_string(self.protection_flag).unwrap();
+
+        write!(
+            f,
+            "MapEntry {:#x}-{:#x} {}, {}",
+            self.start_address,
+            self.end_address,
+            protectiontype,
+            if self.module_name.is_empty() {
+                "anonymous"
+            } else {
+                self.module_name.as_str()
+            },
+        )
+    }
 }
 
 impl MapEntry {
