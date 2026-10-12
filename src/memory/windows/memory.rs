@@ -2,7 +2,7 @@
 
 #[cfg(target_os = "windows")]
 pub mod platform {
-    use crate::memory::utils::ProtectionType;
+    use crate::utils::ProtectionType;
     use std::ffi::CString;
     use std::{io, mem};
     use winapi::shared::minwindef::{DWORD, FALSE, HMODULE, MAX_PATH};

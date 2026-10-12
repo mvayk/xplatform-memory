@@ -1,5 +1,5 @@
 #[cfg(target_os = "linux")]
-use crate::memory::linux::seccomp::{SeccompMode, seccomp_check};
+use crate::linux::seccomp::{SeccompMode, seccomp_check};
 use std::io;
 
 #[derive(Clone, Copy)]

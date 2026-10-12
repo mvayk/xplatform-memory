@@ -1,23 +1,39 @@
 [package]
-name = "xplatform-memory"
+name = "xpmemtool"
 version = "0.2.4"
 edition = "2024"
 
 [[bin]]
 name = "tfoc"
-path = "src/bin/tfoc.rs"
+path = "src/bin/core.rs"
 
 [[bin]]
 name = "twfc"
-path = "src/bin/twfc.rs"
+path = "src/bin/core.rs"
 
 [[bin]]
 name = "openttd"
-path = "src/bin/openttd.rs"
+path = "src/bin/core.rs"
 
 [[bin]]
 name = "test"
-path = "src/bin/test.rs"
+path = "src/bin/core.rs"
+
+# [[bin]]
+# name = "tfoc"
+# path = "src/bin/tfoc.rs"
+#
+# [[bin]]
+# name = "twfc"
+# path = "src/bin/twfc.rs"
+#
+# [[bin]]
+# name = "openttd"
+# path = "src/bin/openttd.rs"
+#
+# [[bin]]
+# name = "test"
+# path = "src/bin/test.rs"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

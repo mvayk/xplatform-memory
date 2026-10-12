@@ -1,7 +1,7 @@
-use crate::memory::{
-    definitions::Address,
+use crate::{
     formatter::Hex,
     linux::{map::MapEntry, platform::ProcessPlatform},
+    types::Address,
 };
 use std::ops::Range;
 use std::{fs, io, path::Path};

@@ -1,6 +1,5 @@
+use crate::linux::platform::ProcessPlatform;
 use std::{fs, io};
-
-use crate::memory::linux::platform::ProcessPlatform;
 
 impl ProcessPlatform {
     pub fn find_pid(name: &str) -> io::Result<i32> {

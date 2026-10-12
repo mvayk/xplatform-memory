@@ -1,10 +1,9 @@
-use crate::memory::definitions::Address;
-use crate::memory::definitions::ProtectionType;
-use crate::memory::formatter::Hex;
-use crate::memory::linux::module::ModuleP;
-use crate::memory::linux::page::{Page, page_align_down, page_size};
-use crate::memory::linux::platform::ProcessPlatform;
-use crate::memory::linux::protection::protection_to_string;
+use crate::formatter::Hex;
+use crate::linux::page::{Page, page_align_down, page_size};
+use crate::linux::platform::ProcessPlatform;
+use crate::linux::protection::protection_to_string;
+use crate::types::Address;
+use crate::types::ProtectionType;
 use std::ops::Range;
 use std::{fs, io};
 

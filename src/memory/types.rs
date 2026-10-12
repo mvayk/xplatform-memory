@@ -20,3 +20,13 @@ pub enum ProtectionType {
 }
 
 pub type Address = u64;
+
+pub unsafe trait Pod: Copy + 'static {}
+
+macro_rules! impl_pod {
+    ($($t:ty),* $(,)?) => { $(unsafe impl Pod for $t {})* };
+}
+impl_pod!(
+    u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64
+);
+unsafe impl<T: Pod, const N: usize> Pod for [T; N] {}

@@ -1,7 +1,7 @@
-use crate::memory::definitions::{Address, ProtectionType};
-use crate::memory::linux::page::Page;
-use crate::memory::linux::platform::ProcessPlatform;
-use crate::memory::linux::trace::SyscallInjector;
+use crate::linux::page::Page;
+use crate::linux::platform::ProcessPlatform;
+use crate::linux::trace::SyscallInjector;
+use crate::types::{Address, ProtectionType};
 use libc::{PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE};
 use nix::unistd::Pid;
 use std::io;

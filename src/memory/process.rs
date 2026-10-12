@@ -1,7 +1,4 @@
-use crate::memory::{
-    definitions::{Address, Module, ProtectionType},
-    linux::memory::Pod,
-};
+use crate::types::{Address, Module, Pod, ProtectionType};
 
 use std::io;
 
@@ -18,8 +15,6 @@ pub struct Process {
 
 impl Process {
     pub fn new(name: &str) -> io::Result<Self> {
-        use crate::memory::formatter::construct_formatter;
-        construct_formatter(platform::ProcessPlatform::find_pid(name)?);
         let pid = platform::ProcessPlatform::find_pid(name)?;
         let inner = platform::ProcessPlatform::new(pid)?;
         Ok(Process { pid, inner })
@@ -33,6 +28,11 @@ impl Process {
             process: self,
             address: module_platform.address,
         })
+    }
+
+    pub fn get_module_base(&self, module_name: &str) -> io::Result<Address> {
+        let module_platform = self.inner.get_module(module_name)?;
+        Ok(module_platform.address.start)
     }
 
     pub fn read_memory<T: Pod>(&self, address: Address) -> io::Result<T> {

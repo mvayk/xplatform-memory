@@ -1,22 +1,12 @@
 /* claude babe vibe */
-use crate::memory::definitions::Address;
-use crate::memory::formatter::Hex;
-use crate::memory::linux::platform::ProcessPlatform;
-use crate::memory::linux::trace::PtraceGuard;
+use crate::formatter::Hex;
+use crate::linux::platform::ProcessPlatform;
+use crate::linux::trace::PtraceGuard;
+use crate::types::{Address, Pod};
 use libc::{c_long, c_void, iovec, process_vm_readv, process_vm_writev};
 use nix::{sys::ptrace, unistd::Pid};
 use std::os::unix::fs::FileExt;
 use std::{fs, io, mem, slice};
-
-pub unsafe trait Pod: Copy + 'static {}
-
-macro_rules! impl_pod {
-    ($($t:ty),* $(,)?) => { $(unsafe impl Pod for $t {})* };
-}
-impl_pod!(
-    u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64
-);
-unsafe impl<T: Pod, const N: usize> Pod for [T; N] {}
 
 fn check_range(addr: Address, len: usize) -> io::Result<Address> {
     addr.checked_add(len as Address)

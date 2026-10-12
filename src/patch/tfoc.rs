@@ -1,7 +1,7 @@
+use crate::process::*;
 use std::io;
-use xplatform_memory::memory::process::*;
 
-pub fn main() -> io::Result<()> {
+pub fn entry() -> io::Result<()> {
     let process_name = "tfoc.exe";
     let process = Process::new(process_name)?;
 

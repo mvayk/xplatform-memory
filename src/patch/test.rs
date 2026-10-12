@@ -1,11 +1,12 @@
-use std::io;
-use xplatform_memory::memory::{
-    definitions::{Address, Module, ProtectionType},
+use crate::{
     formatter::Hex,
     process::*,
+    types::{Address, Module, ProtectionType},
 };
+use std::io;
 
-pub fn main() -> io::Result<()> {
+pub fn entry() -> io::Result<()> {
+    crate::log!("testing");
     let process_name = "test";
     let process = Process::new(process_name)?;
     let pid = process.pid;
@@ -19,10 +20,10 @@ pub fn main() -> io::Result<()> {
     process.protect_memory(&[0x14000], 1usize, ProtectionType::PAGE_NOACCESS)?;
 
     let filtered_regions = process.inner.get_filtered_regions()?;
-    let more_filtered: Vec<xplatform_memory::memory::linux::map::MapEntry> = Vec::new();
+    let more_filtered: Vec<crate::linux::map::MapEntry> = Vec::new();
     for region in filtered_regions {
         if region.is_readable() {
-            log!(region);
+            //log!(region);
         }
     }
 

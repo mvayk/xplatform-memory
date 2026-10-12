@@ -1,13 +1,13 @@
+use crate::process::*;
 use std::io;
-use xplatform_memory::memory::process::*;
 
-pub fn main() -> io::Result<()> {
+pub fn entry() -> io::Result<()> {
     let process_name = "TWFC.exe";
     let process = Process::new(process_name)?;
     println!("PID: {}", process.pid);
 
     let module = process.get_module(process_name)?;
-    let module_base = module.base_address;
+    let module_base = module.address.start;
     println!("base: {:x}", module_base);
 
     /* tfoc fps unlocker thx for magical address */

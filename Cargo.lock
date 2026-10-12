@@ -533,7 +533,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xplatform-memory"
+name = "xpmemtool"
 version = "0.2.4"
 dependencies = [
  "chrono",

@@ -1,5 +1,5 @@
-use crate::memory::definitions::ProtectionType;
-use crate::memory::linux::map::*;
+use crate::linux::map::*;
+use crate::types::ProtectionType;
 use std::fmt;
 use std::sync::OnceLock;
 
