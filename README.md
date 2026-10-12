@@ -1,15 +1,7 @@
 # xplatform-memory
 
-memory hack template for linux and windows
+cross platform memory hack template for linux and windows (mainly linux now)
 
-## build all binaries
+### usage
 
-`cargo build --release`
-
-### building specific binary
-
-`cargo build --release --bin xplatform-patch-twfc`
-
-### running specific binary with cargo
-
-`cargo run --release --bin xplatform-patch-twfc`
+`cargo run --release --bin twfc`
