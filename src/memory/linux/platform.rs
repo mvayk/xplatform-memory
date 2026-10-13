@@ -17,7 +17,7 @@ impl ProcessPlatform {
         let pscope = fs::read_to_string(PTRACE_SCOPE_PATH)
             .inspect_err(|e| tracing::error!(PTRACE_SCOPE_PATH, error = %e, "failed to read:"))?;
 
-        if pscope != "2" {
+        if pscope != "0\n" {
             tracing::warn!(
                 value = pscope,
                 PTRACE_SCOPE_PATH,
