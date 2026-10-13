@@ -1,13 +1,13 @@
 use crate::{
     formatter::Hex,
+    linux::map::MapEntry,
     process::*,
-    types::{Address, Module, ProtectionType},
+    types::{Address, Module},
 };
 use std::io;
 
 pub fn entry() -> io::Result<()> {
-    crate::log!("testing");
-    let process_name = "notepad.exe";
+    let process_name = "test";
     let process = Process::new(process_name)?;
     let pid = process.pid;
 
@@ -16,19 +16,29 @@ pub fn entry() -> io::Result<()> {
 
     let module: Module = process.get_module(process_name)?;
     let filtered_regions = process.inner.get_filtered_regions()?;
-    let more_filtered: Vec<crate::linux::map::MapEntry> = Vec::new();
+
+    let mut stack: MapEntry;
     for region in filtered_regions {
         if region.is_readable() {
-            println!("{}", region);
+            crate::log!("{}", region);
+            if region.module_name == "[stack]" {
+                stack = region;
+                crate::log!("found stack");
+                // process.protect_memory(
+                //     &[stack.start_address],
+                //     (stack.end_address - stack.start_address) as usize,
+                //     ProtectionType::PAGE_NOACCESS,
+                // )?;
+            }
         }
     }
 
+    let baseregion = process
+        .inner
+        .get_region_from_address(module.address.start)?;
+
+    crate::log!(region = format_args!("{baseregion}"));
     process.read_memory::<Address>(module.address.start)?;
-    process.protect_memory(
-        &[module.address.start],
-        1usize,
-        ProtectionType::PAGE_NOACCESS,
-    )?;
 
     Ok(())
 }

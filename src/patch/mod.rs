@@ -5,6 +5,7 @@
 
 use std::io;
 
+/* cursed */
 #[macro_export]
 macro_rules! binify {
     ($($name:ident),* $(,)?) => {
