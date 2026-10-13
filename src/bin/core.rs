@@ -2,6 +2,7 @@
     swap mapentry and pages to ranges for addresses like modules do
     have a better system for querying data from regions, modules and pages
     allow memory functions to use those ranges for addresses
+    remove all the unnecessary io::Result<>
 */
 
 use std::io;

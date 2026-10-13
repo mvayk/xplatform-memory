@@ -2,9 +2,8 @@ use crate::formatter::Hex;
 use crate::linux::page::{Page, page_align_down, page_size};
 use crate::linux::platform::ProcessPlatform;
 use crate::linux::protection::protection_to_string;
-use crate::types::Address;
-use crate::types::ProtectionType;
-use std::ops::Range;
+use crate::types::{Address, AddyRange, ProtectionType};
+use crate::utils::range_to_string;
 use std::{fmt, fs, io};
 
 const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
@@ -12,8 +11,7 @@ const PAGE_ADDRESS_WARN_THRESHOLD: u64 = 10_000_000;
 
 #[derive(Clone)]
 pub struct MapEntry {
-    pub start_address: Address,
-    pub end_address: Address,
+    pub addresses: AddyRange,
     pub protection_flag: ProtectionType,
     pub shared: bool,
     pub offset: u64,
@@ -24,13 +22,13 @@ pub struct MapEntry {
 
 impl fmt::Display for MapEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let protectiontype = protection_to_string(self.protection_flag).unwrap();
+        let protectiontype = protection_to_string(self.protection_flag);
 
         write!(
             f,
             "MapEntry {:#x}-{:#x} {}, {}",
-            self.start_address,
-            self.end_address,
+            self.addresses.start,
+            self.addresses.end,
             protectiontype,
             if self.module_name.is_empty() {
                 "anonymous"
@@ -42,52 +40,48 @@ impl fmt::Display for MapEntry {
 }
 
 impl MapEntry {
-    pub fn size(&self) -> u64 {
-        self.end_address - self.start_address
+    pub fn get_size(&self) -> u64 {
+        self.addresses.end - self.addresses.start
     }
 
-    pub fn page_count(&self) -> u64 {
-        self.size() / page_size()
+    pub fn get_page_count(&self) -> u64 {
+        self.get_size() / page_size()
     }
 
-    pub fn range(&self) -> Range<Address> {
-        self.start_address..self.end_address
+    pub fn get_range(&self) -> AddyRange {
+        (self.addresses.start..self.addresses.end).into()
     }
 
     pub fn contains(&self, address: Address) -> bool {
-        self.range().contains(&address)
+        self.get_range().contains(address)
     }
 
-    pub fn range_string(&self) -> String {
-        format!("{:x}-{:x}", self.start_address, self.end_address)
-    }
-
-    pub fn pages(&self) -> impl Iterator<Item = Address> {
+    pub fn get_pages(&self) -> impl Iterator<Item = Address> {
         let step = page_size();
 
-        if self.size() % step != 0 {
+        if self.get_size() % step != 0 {
             tracing::warn!(
-                range = %self.range_string(),
-                size = self.size(),
+                range = range_to_string(self.addresses),
+                size = self.get_size(),
                 page_size = step,
                 "region size is not a multiple of the page size, last partial page will be included"
             );
         }
 
         tracing::trace!(
-            range = %self.range_string(),
-            pages = self.page_count(),
+            range = range_to_string(self.addresses),
+            pages = self.get_page_count(),
             module = self.module_name,
             "MapEntry::pages iterating"
         );
 
-        self.range().step_by(step as usize)
+        self.get_range().step_by(step as usize)
     }
     pub fn page_at(&self, address: Address) -> Option<Page> {
         if !self.contains(address) {
             tracing::trace!(
                 address = %Hex(address),
-                range = %self.range_string(),
+                range = range_to_string(self.addresses),
                 "page_at: address not in this region"
             );
             return None;
@@ -95,21 +89,24 @@ impl MapEntry {
 
         let size = page_size();
         let aligned = page_align_down(address);
-        let start_address = aligned.max(self.start_address);
-        let end_address = (aligned + size).min(self.end_address);
-        let index_in_region = (start_address - self.start_address) / size;
+
+        let start_address = aligned.max(self.addresses.start);
+        let end_address = (aligned + size).min(self.addresses.end);
+
+        let index_in_region = ((start_address - self.addresses.start) / size) as usize;
 
         tracing::trace!(
             address = %Hex(address),
-            page_start = %Hex(start_address),
-            page_end = %Hex(end_address),
+            page_range = range_to_string(self.addresses),
             index_in_region,
             "page_at: resolved page"
         );
 
         Some(Page {
-            start_address,
-            end_address,
+            addresses: AddyRange {
+                start: start_address,
+                end: end_address,
+            },
             index_in_region,
             region: self.clone(),
         })
@@ -188,7 +185,7 @@ fn parse_permissions(perms: &str, line: &str) -> io::Result<(ProtectionType, boo
     tracing::trace!(
         permission = perms,
         shared = shared,
-        protection = ?protection_to_string(protection).ok(),
+        protection = protection_to_string(protection),
         "parse_permissions ok"
     );
 
@@ -223,6 +220,7 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
     let end_address =
         Address::from_str_radix(e, 16).map_err(|_| invalid("bad end address", line))?;
     if end_address < start_address {
+        tracing::error!(context = line, "end address found before start address");
         return Err(invalid("end address before start address", line));
     }
     if end_address == start_address {
@@ -238,9 +236,13 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
     let (protection_flag, shared) = parse_permissions(perms, line)?;
     let dev = parse_dev(dev, line)?;
 
+    let range = AddyRange {
+        start: start_address,
+        end: end_address,
+    };
+
     tracing::trace!(
-        start = %Hex(start_address),
-        end = %Hex(end_address),
+        //range.to_string(),
         perms = perms,
         offset = %Hex(offset),
         dev = dev.0 as u64 * 256 + dev.1 as u64,
@@ -251,8 +253,10 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
     );
 
     Ok(MapEntry {
-        start_address,
-        end_address,
+        addresses: AddyRange {
+            start: start_address,
+            end: end_address,
+        },
         protection_flag,
         shared,
         offset,
@@ -263,31 +267,27 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
 }
 
 impl ProcessPlatform {
-    pub fn get_all_regions(&self) -> io::Result<Vec<MapEntry>> {
+    fn read_maps(&self) -> io::Result<String> {
         let path = format!("/proc/{}/maps", self.pid);
-        let maps = fs::read_to_string(&path).map_err(|e| {
+        fs::read_to_string(&path).map_err(|e| {
             tracing::error!(
                 pid = self.pid,
                 path = path.as_str(),
                 kind = ?e.kind(),
                 error = %e,
-                "get_all_regions failed to read maps file (is the process still running? permissions?)"
+                "failed to read maps file (is the process still running? permissions?)"
             );
             e
-        })?;
+        })
+    }
 
+    pub fn get_all_regions(&self) -> io::Result<Vec<MapEntry>> {
+        let maps = self.read_maps()?;
         let mut regions = Vec::new();
-        let mut total_bytes: u64 = 0;
 
         for (i, line) in maps.lines().enumerate() {
             let line_number = i + 1;
-
             if line.trim().is_empty() {
-                tracing::trace!(
-                    pid = self.pid,
-                    line_number,
-                    "get_all_regions skipping empty line"
-                );
                 continue;
             }
 
@@ -305,13 +305,11 @@ impl ProcessPlatform {
             tracing::trace!(
                 pid = self.pid,
                 line_number,
-                range = %entry.range_string(),
-                perms = ?protection_to_string(entry.protection_flag).ok(),
+                range = %entry.addresses,
+                perms = protection_to_string(entry.protection_flag),
                 module = entry.module_name,
-                "get_all_regions successfully read line"
+                "get_all_regions read line"
             );
-
-            total_bytes += entry.size();
             regions.push(entry);
         }
 
@@ -324,7 +322,7 @@ impl ProcessPlatform {
             tracing::info!(
                 pid = self.pid,
                 regions = regions.len(),
-                total_bytes,
+                total_bytes = regions.iter().map(MapEntry::get_size).sum::<u64>(),
                 "get_all_regions successful"
             );
         }
@@ -332,51 +330,112 @@ impl ProcessPlatform {
         Ok(regions)
     }
 
-    pub fn get_region_from_address(&self, address: Address) -> io::Result<MapEntry> {
-        match self
-            .get_all_regions()?
+    fn filter_regions(
+        &self,
+        caller: &'static str,
+        skip_reason: impl Fn(&MapEntry) -> Option<&'static str>,
+    ) -> io::Result<Vec<MapEntry>> {
+        let all = self.get_all_regions()?;
+        let total = all.len();
+
+        let regions: Vec<MapEntry> = all
             .into_iter()
-            .find(|region| region.contains(address))
-        {
-            Some(region) => {
-                tracing::debug!(
-                    pid = self.pid,
-                    address = %Hex(address),
-                    range = %region.range_string(),
-                    module = region.module_name,
-                    "get_region_from_address found region"
-                );
-                Ok(region)
-            }
-            None => {
-                tracing::error!(
-                    pid = self.pid,
-                    address = %Hex(address),
-                    "get_region_from_address failed to find region for address"
-                );
-                Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "Failed to find region from address",
-                ))
-            }
-        }
+            .filter(|r| match skip_reason(r) {
+                Some(reason) => {
+                    tracing::trace!(
+                        caller,
+                        range = %r.addresses,
+                        module = r.module_name,
+                        reason,
+                        "skipping region"
+                    );
+                    false
+                }
+                None => true,
+            })
+            .collect();
+
+        tracing::debug!(
+            pid = self.pid,
+            caller,
+            total,
+            kept = regions.len(),
+            "filter_regions done"
+        );
+        Ok(regions)
     }
 
-    pub fn get_page_from_address(&self, address: u64) -> io::Result<Page> {
+    pub fn get_readable_regions(&self) -> io::Result<Vec<MapEntry>> {
+        self.filter_regions("get_readable_regions", |r| {
+            (!r.is_readable()).then_some("non-readable")
+        })
+    }
+
+    pub fn get_filtered_regions(&self) -> io::Result<Vec<MapEntry>> {
+        self.filter_regions("get_filtered_regions", |r| {
+            r.is_special().then_some("special")
+        })
+    }
+
+    pub fn get_scannable_regions(&self) -> io::Result<Vec<MapEntry>> {
+        let regions = self.filter_regions("get_scannable_regions", |r| {
+            if r.is_special() {
+                Some("special")
+            } else if !r.is_readable() {
+                Some("non-readable")
+            } else {
+                None
+            }
+        })?;
+
+        tracing::info!(
+            pid = self.pid,
+            scannable_bytes = regions.iter().map(MapEntry::get_size).sum::<u64>(),
+            "get_scannable_regions successful"
+        );
+        Ok(regions)
+    }
+
+    pub fn get_regions_in_range(&self, range: AddyRange) -> io::Result<Vec<MapEntry>> {
+        Ok(self
+            .get_all_regions()?
+            .into_iter()
+            .filter(|r| r.addresses.overlaps(range))
+            .collect())
+    }
+
+    pub fn get_region_from_address(&self, address: Address) -> io::Result<MapEntry> {
+        let region = self
+            .get_all_regions()?
+            .into_iter()
+            .find(|r| r.contains(address))
+            .ok_or_else(|| {
+                tracing::error!(pid = self.pid, address = %Hex(address), "no region for address");
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Failed to find region from address",
+                )
+            })?;
+
         tracing::debug!(
             pid = self.pid,
             address = %Hex(address),
-            "get_page_from_address looking up page"
+            range = %region.addresses,
+            module = region.module_name,
+            "get_region_from_address found region"
         );
+        Ok(region)
+    }
 
+    pub fn get_page_from_address(&self, address: Address) -> io::Result<Page> {
         let region = self.get_region_from_address(address)?;
 
         let page = region.page_at(address).ok_or_else(|| {
             tracing::error!(
                 pid = self.pid,
                 address = %Hex(address),
-                range = %region.range_string(),
-                "get_page_from_address found a region but page_at returned None"
+                range = %region.addresses,
+                "region contained address but page_at returned None"
             );
             io::Error::new(
                 io::ErrorKind::Other,
@@ -387,139 +446,10 @@ impl ProcessPlatform {
         tracing::info!(
             pid = self.pid,
             address = %Hex(address),
-            page_start = %Hex(page.start_address),
+            page_start = %Hex(page.addresses.start),
             index_in_region = page.index_in_region,
             "get_page_from_address found page"
         );
-
         Ok(page)
-    }
-
-    pub fn get_readable_regions(&self) -> io::Result<Vec<MapEntry>> {
-        let all = self.get_all_regions()?;
-        let total = all.len();
-
-        let regions: Vec<MapEntry> = all
-            .into_iter()
-            .filter(|region| {
-                let keep = region.is_readable();
-                if !keep {
-                    tracing::trace!(
-                        range = %region.range_string(),
-                        module = region.module_name,
-                        "get_readable_regions skipping non-readable region"
-                    );
-                }
-                keep
-            })
-            .collect();
-
-        tracing::info!(
-            pid = self.pid,
-            total,
-            kept = regions.len(),
-            "get_readable_regions successful"
-        );
-
-        Ok(regions)
-    }
-
-    pub fn get_filtered_regions(&self) -> io::Result<Vec<MapEntry>> {
-        let all = self.get_all_regions()?;
-        let total = all.len();
-
-        let regions: Vec<MapEntry> = all
-            .into_iter()
-            .filter(|region| {
-                let keep = !region.is_special();
-                if !keep {
-                    tracing::trace!(
-                        range = %region.range_string(),
-                        module = region.module_name,
-                        "get_filtered_regions skipping special region"
-                    );
-                }
-                keep
-            })
-            .collect();
-
-        tracing::debug!(
-            pid = self.pid,
-            total,
-            kept = regions.len(),
-            "get_filtered_regions successful"
-        );
-
-        Ok(regions)
-    }
-
-    pub fn get_scannable_regions(&self) -> io::Result<Vec<MapEntry>> {
-        let all = self.get_all_regions()?;
-        let total = all.len();
-
-        let regions: Vec<MapEntry> = all
-            .into_iter()
-            .filter(|region| {
-                if region.is_special() {
-                    tracing::trace!(
-                        range = %region.range_string(),
-                        module = region.module_name,
-                        "get_scannable_regions skipping special region"
-                    );
-                    return false;
-                }
-                if !region.is_readable() {
-                    tracing::trace!(
-                        range = %region.range_string(),
-                        module = region.module_name,
-                        "get_scannable_regions skipping non-readable region"
-                    );
-                    return false;
-                }
-                true
-            })
-            .collect();
-
-        let scannable_bytes: u64 = regions.iter().map(MapEntry::size).sum();
-        tracing::info!(
-            pid = self.pid,
-            total,
-            kept = regions.len(),
-            scannable_bytes,
-            "get_scannable_regions successful"
-        );
-
-        Ok(regions)
-    }
-
-    pub fn get_page_addresses(regions: &[MapEntry]) -> Vec<u64> {
-        let expected: u64 = regions.iter().map(MapEntry::page_count).sum();
-
-        if expected > PAGE_ADDRESS_WARN_THRESHOLD {
-            tracing::warn!(
-                regions = regions.len(),
-                expected_pages = expected,
-                "get_page_addresses building large vec expect lag, consider iterating regions instead"
-            );
-        }
-
-        let mut addresses = Vec::with_capacity(expected as usize);
-        addresses.extend(regions.iter().flat_map(|region| region.pages()));
-
-        tracing::info!(
-            regions = regions.len(),
-            pages = addresses.len(),
-            "get_page_addresses successful"
-        );
-
-        addresses
-    }
-
-    pub fn get_regions_in_range(&self, range: Range<Address>) -> io::Result<Vec<MapEntry>> {
-        Ok(self
-            .get_all_regions()?
-            .into_iter()
-            .filter(|r| r.start_address < range.end && r.end_address > range.start)
-            .collect())
     }
 }

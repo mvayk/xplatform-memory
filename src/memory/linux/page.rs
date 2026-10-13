@@ -1,5 +1,6 @@
 use crate::linux::map::*;
-use crate::types::ProtectionType;
+use crate::types::{Address, AddyRange, ProtectionType};
+use crate::utils::range_to_string;
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -24,27 +25,27 @@ pub fn page_size() -> u64 {
 
 #[derive(Clone)]
 pub struct Page {
-    pub start_address: u64,
-    pub end_address: u64,
-    pub index_in_region: u64,
+    pub addresses: AddyRange,
+    pub index_in_region: usize,
     pub region: MapEntry,
 }
 
-pub fn page_align_down(address: u64) -> u64 {
+pub fn page_align_down(address: Address) -> u64 {
     address & !(page_size() - 1)
 }
 
 impl Page {
-    pub fn size(&self) -> u64 {
-        self.end_address - self.start_address
+    pub fn get_size(&self) -> u64 {
+        self.addresses.end - self.addresses.start
     }
 
-    pub fn contains(&self, address: u64) -> bool {
-        (self.start_address..self.end_address).contains(&address)
+    pub fn contains(&self, address: Address) -> bool {
+        (self.addresses.start..self.addresses.end).contains(&address)
     }
 
-    pub fn offset_of(&self, address: u64) -> Option<u64> {
-        self.contains(address).then(|| address - self.start_address)
+    pub fn offset_of(&self, address: Address) -> Option<u64> {
+        self.contains(address)
+            .then(|| address - self.addresses.start)
     }
 
     /* pages inherit a regions protection flags */
@@ -65,13 +66,11 @@ impl fmt::Display for Page {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "page {:#x}-{:#x} (#{} of {}) in region {:#x}-{:#x} [{}]",
-            self.start_address,
-            self.end_address,
+            "page {} ({} of {}) in region [{}] with {}",
+            range_to_string(self.addresses),
             self.index_in_region,
-            self.region.page_count(),
-            self.region.start_address,
-            self.region.end_address,
+            self.region.get_page_count(),
+            range_to_string(self.region.addresses),
             if self.region.module_name.is_empty() {
                 "anonymous"
             } else {

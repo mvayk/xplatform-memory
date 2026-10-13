@@ -1,9 +1,7 @@
 use crate::{
-    formatter::Hex,
     linux::{map::MapEntry, platform::ProcessPlatform},
-    types::Address,
+    types::AddyRange,
 };
-use std::ops::Range;
 use std::{fs, io, path::Path};
 
 fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
@@ -40,7 +38,7 @@ fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
 pub struct ModuleP<'a> {
     pub name: String, /* file path */
     pub process: &'a ProcessPlatform,
-    pub address: Range<Address>,
+    pub address: AddyRange,
 }
 
 impl<'a> ModuleP<'a> {
@@ -48,7 +46,7 @@ impl<'a> ModuleP<'a> {
         self.process.get_module_regions(self.name.as_str())
     }
 
-    pub fn get_range(&self) -> io::Result<Range<Address>> {
+    pub fn get_range(&self) -> io::Result<AddyRange> {
         self.process.get_module_range(self.name.as_str())
     }
 }
@@ -61,8 +59,7 @@ impl ProcessPlatform {
         tracing::info!(
             module_name,
             path,
-            start = %Hex(range.start),
-            end = %Hex(range.end),
+            %range,
             self.pid,
             "get_module successful"
         );
@@ -92,10 +89,10 @@ impl ProcessPlatform {
         Ok(regions)
     }
 
-    pub fn get_module_range(&self, name: &str) -> io::Result<Range<Address>> {
+    pub fn get_module_range(&self, name: &str) -> io::Result<AddyRange> {
         let regions = self.get_module_regions(name)?;
-        let start = regions.iter().map(|r| r.start_address).min().unwrap();
-        let end = regions.iter().map(|r| r.end_address).max().unwrap();
-        Ok(start..end)
+        let start = regions.iter().map(|r| r.addresses.start).min().unwrap();
+        let end = regions.iter().map(|r| r.addresses.end).max().unwrap();
+        Ok((start..end).into())
     }
 }
