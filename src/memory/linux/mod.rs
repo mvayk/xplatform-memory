@@ -1,3 +1,4 @@
+pub mod address;
 pub mod map;
 pub mod memory;
 pub mod module;

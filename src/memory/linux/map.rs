@@ -3,7 +3,6 @@ use crate::linux::page::{Page, page_align_down, page_size};
 use crate::linux::platform::ProcessPlatform;
 use crate::linux::protection::protection_to_string;
 use crate::types::{Address, AddyRange, ProtectionType};
-use crate::utils::range_to_string;
 use std::{fmt, fs, io};
 
 const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
@@ -26,9 +25,8 @@ impl fmt::Display for MapEntry {
 
         write!(
             f,
-            "MapEntry {:#x}-{:#x} {}, {}",
-            self.addresses.start,
-            self.addresses.end,
+            "MapEntry {}, {}, {}",
+            self.addresses,
             protectiontype,
             if self.module_name.is_empty() {
                 "anonymous"
@@ -48,20 +46,16 @@ impl MapEntry {
         self.get_size() / page_size()
     }
 
-    pub fn get_range(&self) -> AddyRange {
-        (self.addresses.start..self.addresses.end).into()
-    }
-
     pub fn contains(&self, address: Address) -> bool {
-        self.get_range().contains(address)
+        self.addresses.contains(address)
     }
 
-    pub fn get_pages(&self) -> impl Iterator<Item = Address> {
+    pub fn get_pages(&self) -> Option<Page> {
         let step = page_size();
 
         if self.get_size() % step != 0 {
             tracing::warn!(
-                range = range_to_string(self.addresses),
+                range = %self.addresses,
                 size = self.get_size(),
                 page_size = step,
                 "region size is not a multiple of the page size, last partial page will be included"
@@ -69,19 +63,39 @@ impl MapEntry {
         }
 
         tracing::trace!(
-            range = range_to_string(self.addresses),
+            range = %self.addresses,
             pages = self.get_page_count(),
             module = self.module_name,
             "MapEntry::pages iterating"
         );
 
-        self.get_range().step_by(step as usize)
+        let page = self.addresses.step_by(step as usize);
+        println!("{:?}", page);
+
+        // Some(Page {
+        //     addresses: AddyRange {
+        //         start: self.addresses.start,
+        //         end: self.addresses.end,
+        //     },
+        //     //self.index_in_region,
+        //     region: self.clone(),
+        // })
+
+        Some(Page {
+            addresses: AddyRange {
+                start: 0x0,
+                end: 0x0,
+            },
+            index_in_region: 1usize,
+            region: self.clone(),
+        })
     }
+
     pub fn page_at(&self, address: Address) -> Option<Page> {
         if !self.contains(address) {
             tracing::trace!(
                 address = %Hex(address),
-                range = range_to_string(self.addresses),
+                range = %self.addresses,
                 "page_at: address not in this region"
             );
             return None;
@@ -97,7 +111,7 @@ impl MapEntry {
 
         tracing::trace!(
             address = %Hex(address),
-            page_range = range_to_string(self.addresses),
+            page_range = %self.addresses,
             index_in_region,
             "page_at: resolved page"
         );

@@ -1,6 +1,5 @@
 use crate::linux::map::*;
 use crate::types::{Address, AddyRange, ProtectionType};
-use crate::utils::range_to_string;
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -66,11 +65,11 @@ impl fmt::Display for Page {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "page {} ({} of {}) in region [{}] with {}",
-            range_to_string(self.addresses),
+            "page {} ({} of {}) in region [{}] module {}",
+            (self.addresses),
             self.index_in_region,
             self.region.get_page_count(),
-            range_to_string(self.region.addresses),
+            (self.region.addresses),
             if self.region.module_name.is_empty() {
                 "anonymous"
             } else {

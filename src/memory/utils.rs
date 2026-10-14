@@ -1,5 +1,5 @@
-use crate::types::AddyRange;
+use chrono::Local;
 
-pub fn range_to_string(address_range: AddyRange) -> String {
-    format!("{:x}-{:x}", address_range.start, address_range.end)
+pub fn get_timestamp() {
+    Local::now().format("%H:%M:%S%.3f");
 }

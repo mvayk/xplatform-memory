@@ -6,6 +6,8 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields, format::Writer};
 use tracing_subscriber::registry::LookupSpan;
 
+use crate::utils;
+
 enum TraceLevel {
     ERROR,
     WARN,
@@ -67,7 +69,7 @@ where
         mut writer: Writer<'_>,
         event: &Event<'_>,
     ) -> std::fmt::Result {
-        let timestamp = Local::now().format("%H:%M:%S%.3f");
+        //let timestamp = Local::now().format("%H:%M:%S%.3f");
         //let level = *event.metadata().level();
 
         let meta = event.metadata();
@@ -87,8 +89,8 @@ where
 
         write!(
             writer,
-            "[{}][{}]: ",
-            timestamp.to_string().dimmed(),
+            "[{:?}][{}]: ",
+            utils::get_timestamp(),
             //self.pid,
             level_str
         )?;
