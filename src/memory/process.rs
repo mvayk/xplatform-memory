@@ -26,13 +26,13 @@ impl Process {
         Ok(Module {
             name: module_platform.name.to_string(),
             process: self,
-            address: module_platform.address,
+            address: module_platform.addresses,
         })
     }
 
     pub fn get_module_base(&self, module_name: &str) -> io::Result<Address> {
         let module_platform = self.inner.get_module(module_name)?;
-        Ok(module_platform.address.start)
+        Ok(module_platform.addresses.start)
     }
 
     pub fn read_memory<T: Pod>(&self, address: Address) -> io::Result<T> {

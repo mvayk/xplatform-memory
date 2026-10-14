@@ -1,5 +1,5 @@
-use crate::{process::Process, types::Address};
 use std::io;
+use xpmemtool::{process::Process, types::Address};
 
 pub fn entry() -> io::Result<()> {
     let process_name = "openttd.exe";

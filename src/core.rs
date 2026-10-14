@@ -5,10 +5,13 @@
     remove all the unnecessary io::Result<>
 */
 
+use crate::formatter;
 use std::io;
-use xpmemtool::{formatter, patch};
 
-fn main() -> io::Result<()> {
-    formatter::init();
-    patch::entry(env!("CARGO_BIN_NAME"))
+pub struct Xpmentool {}
+
+impl Xpmentool {
+    pub fn init() -> () {
+        formatter::init();
+    }
 }

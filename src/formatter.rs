@@ -1,4 +1,4 @@
-use chrono::Local;
+use crate::utils::get_timestamp;
 use owo_colors::OwoColorize;
 use std::sync::Once;
 use std::{fmt, ops::Add, ops::Deref, ops::Sub};
@@ -6,30 +6,8 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields, format::Writer};
 use tracing_subscriber::registry::LookupSpan;
 
-use crate::utils;
-
-enum TraceLevel {
-    ERROR,
-    WARN,
-    INFO,
-    DEBUG,
-    TRACE,
-}
-
-impl TraceLevel {
-    pub fn match_string(&self) -> &str {
-        match self {
-            TraceLevel::ERROR => "error",
-            TraceLevel::WARN => "warn",
-            TraceLevel::INFO => "info",
-            TraceLevel::DEBUG => "debug",
-            TraceLevel::TRACE => "trace",
-        }
-    }
-}
-
 static INIT: Once = Once::new();
-static DEBUG_BUILD_LEVEL: TraceLevel = TraceLevel::DEBUG;
+static DEBUG_BUILD_LEVEL: &str = "debug";
 
 #[macro_export]
 macro_rules! log {
@@ -43,7 +21,7 @@ struct FormatOutput {}
 pub fn init() {
     INIT.call_once(|| {
         let default_level = if cfg!(debug_assertions) {
-            DEBUG_BUILD_LEVEL.match_string()
+            DEBUG_BUILD_LEVEL
         } else {
             "info"
         };
@@ -69,7 +47,6 @@ where
         mut writer: Writer<'_>,
         event: &Event<'_>,
     ) -> std::fmt::Result {
-        //let timestamp = Local::now().format("%H:%M:%S%.3f");
         //let level = *event.metadata().level();
 
         let meta = event.metadata();
@@ -89,8 +66,8 @@ where
 
         write!(
             writer,
-            "[{:?}][{}]: ",
-            utils::get_timestamp(),
+            "[{}][{}]: ",
+            get_timestamp().to_string().dimmed(),
             //self.pid,
             level_str
         )?;

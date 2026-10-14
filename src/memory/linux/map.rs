@@ -8,6 +8,7 @@ use std::{fmt, fs, io};
 const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
 const PAGE_ADDRESS_WARN_THRESHOLD: u64 = 10_000_000;
 
+/* aka Region */
 #[derive(Clone)]
 pub struct MapEntry {
     pub addresses: AddyRange,
@@ -70,7 +71,7 @@ impl MapEntry {
         );
 
         let page = self.addresses.step_by(step as usize);
-        println!("{:?}", page);
+        println!("{:?}, {} ", page, step);
 
         // Some(Page {
         //     addresses: AddyRange {
@@ -256,7 +257,7 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
     };
 
     tracing::trace!(
-        //range.to_string(),
+        %range,
         perms = perms,
         offset = %Hex(offset),
         dev = dev.0 as u64 * 256 + dev.1 as u64,

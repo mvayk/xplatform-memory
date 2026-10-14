@@ -38,7 +38,7 @@ fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
 pub struct ModuleP<'a> {
     pub name: String, /* file path */
     pub process: &'a ProcessPlatform,
-    pub address: AddyRange,
+    pub addresses: AddyRange,
 }
 
 impl<'a> ModuleP<'a> {
@@ -67,7 +67,7 @@ impl ProcessPlatform {
         Ok(ModuleP {
             name: path,
             process: self,
-            address: range,
+            addresses: range,
         })
     }
 

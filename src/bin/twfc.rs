@@ -1,5 +1,5 @@
-use crate::process::*;
 use std::io;
+use xpmemtool::process::*;
 
 pub fn entry() -> io::Result<()> {
     let process_name = "TWFC.exe";

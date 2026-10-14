@@ -1,10 +1,10 @@
-use crate::{
+use std::io;
+use xpmemtool::{
     formatter::Hex,
     linux::map::MapEntry,
     process::*,
     types::{Address, Module},
 };
-use std::io;
 
 pub fn entry() -> io::Result<()> {
     let process_name = "test";

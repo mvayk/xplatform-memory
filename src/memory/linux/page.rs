@@ -39,7 +39,7 @@ impl Page {
     }
 
     pub fn contains(&self, address: Address) -> bool {
-        (self.addresses.start..self.addresses.end).contains(&address)
+        self.addresses.contains(address)
     }
 
     pub fn offset_of(&self, address: Address) -> Option<u64> {
