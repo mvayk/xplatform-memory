@@ -1,12 +1,15 @@
 use std::io;
 use xpmemtool::{
+    core,
     formatter::Hex,
     linux::map::MapEntry,
     process::*,
     types::{Address, Module},
 };
 
-pub fn entry() -> io::Result<()> {
+fn main() -> io::Result<()> {
+    core::Xpmentool::init();
+
     let process_name = "test";
     let process = Process::new(process_name)?;
     let pid = process.pid;
@@ -15,23 +18,23 @@ pub fn entry() -> io::Result<()> {
     // println!("{}", maps_file);
 
     let module: Module = process.get_module(process_name)?;
-    //let filtered_regions = process.inner.get_filtered_regions()?;
+    let filtered_regions = process.inner.get_filtered_regions()?;
 
     let mut stack: MapEntry;
-    // for region in filtered_regions {
-    //     if region.is_readable() {
-    //         crate::log!("{}", region);
-    //         if region.module_name == "[stack]" {
-    //             stack = region;
-    //             crate::log!("found stack");
-    //             // process.protect_memory(
-    //             //     &[stack.start_address],
-    //             //     (stack.end_address - stack.start_address) as usize,
-    //             //     ProtectionType::PAGE_NOACCESS,
-    //             // )?;
-    //         }
-    //     }
-    // }
+    for region in filtered_regions {
+        if region.is_readable() {
+            xpmemtool::log!("{}", region);
+            if region.module_name == "[stack]" {
+                stack = region;
+                xpmemtool::log!("found stack");
+                // process.protect_memory(
+                //     &[stack.start_address],
+                //     (stack.end_address - stack.start_address) as usize,
+                //     ProtectionType::PAGE_NOACCESS,
+                // )?;
+            }
+        }
+    }
 
     let baseregion = process
         .inner
@@ -39,9 +42,9 @@ pub fn entry() -> io::Result<()> {
 
     let a = baseregion.get_pages();
 
-    crate::log!(region = format_args!("{baseregion}"));
+    xpmemtool::log!(region = format_args!("{baseregion}"));
     for x in a {
-        crate::log!(page = format_args!("{x}"));
+        xpmemtool::log!(page = format_args!("{x}"));
     }
     //process.read_memory::<Address>(module.address.start)?;
     //process.inner.get_page_from_address(module.address.start)?;

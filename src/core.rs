@@ -6,12 +6,18 @@
 */
 
 use crate::formatter;
-use std::io;
+use std::sync::OnceLock;
+
+static INITIALIZED: OnceLock<()> = OnceLock::new();
 
 pub struct Xpmentool {}
 
 impl Xpmentool {
-    pub fn init() -> () {
-        formatter::init();
+    pub fn init() {
+        INITIALIZED.get_or_init(|| formatter::init());
+    }
+
+    pub fn is_initialized() -> bool {
+        INITIALIZED.get().is_some()
     }
 }

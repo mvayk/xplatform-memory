@@ -1,3 +1,4 @@
+use crate::core::Xpmentool;
 use crate::types::{Address, Module, Pod, ProtectionType};
 
 use std::io;
@@ -15,6 +16,10 @@ pub struct Process {
 
 impl Process {
     pub fn new(name: &str) -> io::Result<Self> {
+        assert!(
+            Xpmentool::is_initialized(),
+            "Xpmentool::init() must be called before using Memory"
+        );
         let pid = platform::ProcessPlatform::find_pid(name)?;
         let inner = platform::ProcessPlatform::new(pid)?;
         Ok(Process { pid, inner })

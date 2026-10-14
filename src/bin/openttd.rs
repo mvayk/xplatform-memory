@@ -1,7 +1,7 @@
 use std::io;
 use xpmemtool::{process::Process, types::Address};
 
-pub fn entry() -> io::Result<()> {
+pub fn main() -> io::Result<()> {
     let process_name = "openttd.exe";
     let process = Process::new(process_name)?;
     let module_base = process.get_module_base(process_name)?;

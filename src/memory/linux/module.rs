@@ -86,13 +86,27 @@ impl ProcessPlatform {
             );
             return Err(io::Error::new(io::ErrorKind::NotFound, "module not found"));
         }
+
         Ok(regions)
     }
 
     pub fn get_module_range(&self, name: &str) -> io::Result<AddyRange> {
-        let regions = self.get_module_regions(name)?;
-        let start = regions.iter().map(|r| r.addresses.start).min().unwrap();
-        let end = regions.iter().map(|r| r.addresses.end).max().unwrap();
+        let module_regions = self.get_module_regions(name)?;
+        let start = module_regions
+            .iter()
+            .map(|r| r.addresses.start)
+            .min()
+            .unwrap();
+        let end = module_regions
+            .iter()
+            .map(|r| r.addresses.end)
+            .max()
+            .unwrap();
+
+        for region in module_regions {
+            tracing::trace!(%region, start, end, "get_module_range");
+        }
+
         Ok((start..end).into())
     }
 }

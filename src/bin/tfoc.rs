@@ -1,7 +1,7 @@
 use std::io;
 use xpmemtool::process::*;
 
-pub fn entry() -> io::Result<()> {
+pub fn main() -> io::Result<()> {
     let process_name = "tfoc.exe";
     let process = Process::new(process_name)?;
 
