@@ -5,7 +5,7 @@
     remove all the unnecessary io::Result<>
 */
 
-use crate::formatter;
+use crate::{formatter, log};
 use std::sync::OnceLock;
 
 static INITIALIZED: OnceLock<()> = OnceLock::new();
