@@ -1,6 +1,5 @@
-use std::io;
-
 use nix::unistd::Pid;
+use std::io;
 
 use crate::{
     linux::{platform::ProcessPlatform, trace::SyscallInjector},

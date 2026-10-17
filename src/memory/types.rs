@@ -1,4 +1,5 @@
 use crate::memory::process::Process;
+use std::ops::Range;
 
 pub struct Module<'a> {
     pub name: String,
@@ -16,8 +17,6 @@ pub enum ProtectionType {
     PAGE_READONLY,          /* PROT_READ */
     PAGE_READWRITE,         /* PROT_READWRITE */
 }
-
-use std::ops::Range;
 
 pub type Address = u64;
 

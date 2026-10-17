@@ -5,6 +5,35 @@ use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::Pid;
 use std::{io, process};
 
+#[derive(Default)]
+pub struct InputRegisters {
+    pub rip: u64,
+    pub rax: u64,
+    pub rdi: u64,
+    pub rsi: u64,
+    pub rdx: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
+}
+
+impl InputRegisters {
+    pub fn to_libc_user_regs(&self, saved_regs: libc::user_regs_struct) -> libc::user_regs_struct {
+        let mut regs = saved_regs;
+
+        regs.rax = self.rax;
+        regs.orig_rax = u64::MAX;
+        regs.rdi = self.rdi;
+        regs.rsi = self.rsi;
+        regs.rdx = self.rdx;
+        regs.r10 = self.r10;
+        regs.r9 = self.r9;
+        regs.r8 = self.r8;
+
+        regs
+    }
+}
+
 pub struct PtraceGuard {
     pid: Pid,
 }
@@ -73,17 +102,11 @@ impl SyscallInjector {
         })
     }
 
-    pub fn syscall(&self, nr: i64, args: [u64; 6]) -> io::Result<i64> {
+    // pub fn syscall(&self, nr: i64, args: [u64; 6]) -> io::Result<i64> {
+    pub fn syscall(&self, new_regs: InputRegisters) -> io::Result<i64> {
         let pid = self.guard.pid;
-        let mut regs = self.saved_regs;
-        regs.rax = nr as u64;
-        regs.orig_rax = u64::MAX;
-        regs.rdi = args[0];
-        regs.rsi = args[1];
-        regs.rdx = args[2];
-        regs.r10 = args[3];
-        regs.r8 = args[4];
-        regs.r9 = args[5];
+        let saved_regs = self.saved_regs;
+        let regs = new_regs.to_libc_user_regs(saved_regs);
 
         ptrace::setregs(pid, regs)
             .inspect_err(|e| tracing::error!(error = %e, "syscall failed to set registers"))?;
@@ -92,7 +115,7 @@ impl SyscallInjector {
         match waitpid(pid, None)? {
             WaitStatus::Stopped(_, SIGTRAP) => {}
             other => {
-                tracing::error!(pid = pid.as_raw(), nr, status = ?other, "unexpected wait status during syscall");
+                tracing::error!(pid = pid.as_raw(), regs.rax, status = ?other, "unexpected wait status during syscall");
                 //self.fake_drop(true, false);
                 return Err(io::Error::other(format!(
                     "unexpected wait status: {other:?}"
@@ -102,10 +125,20 @@ impl SyscallInjector {
 
         let ret = ptrace::getregs(pid)?.rax as i64;
         if (-4095..0).contains(&ret) {
-            tracing::error!(pid = pid.as_raw(), nr, ret, "remote syscall returned error");
+            tracing::error!(
+                pid = pid.as_raw(),
+                regs.rax,
+                ret,
+                "remote syscall returned error"
+            );
             Err(io::Error::from_raw_os_error(-ret as i32))
         } else {
-            tracing::debug!(pid = pid.as_raw(), nr, ret, "remote syscall successful");
+            tracing::debug!(
+                pid = pid.as_raw(),
+                regs.rax,
+                ret,
+                "remote syscall successful"
+            );
             Ok(ret)
         }
     }

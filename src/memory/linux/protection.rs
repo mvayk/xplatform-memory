@@ -1,6 +1,6 @@
 use crate::linux::page::Page;
 use crate::linux::platform::ProcessPlatform;
-use crate::linux::trace::SyscallInjector;
+use crate::linux::trace::{InputRegisters, SyscallInjector};
 use crate::types::{Address, ProtectionType};
 use libc::{PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE};
 use nix::unistd::Pid;
@@ -46,7 +46,17 @@ impl ProcessPlatform {
         let prot = match_protection(protection) as u64;
         let injector = SyscallInjector::new(Pid::from_raw(self.pid))?;
         for addr in addresses {
-            match injector.syscall(libc::SYS_mprotect, [*addr, length, prot, 0, 0, 0]) {
+            let new_regs = InputRegisters {
+                rax: libc::SYS_mprotect as u64,
+                rdi: *addr,
+                rsi: length,
+                rdx: prot,
+                r10: 0,
+                r9: 0,
+                r8: 0,
+                ..Default::default()
+            };
+            match injector.syscall(new_regs) {
                 Ok(ret) if ret < 0 => {
                     tracing::error!(addr = format_args!("{addr:#x}"), ret, "mprotect failed");
                     return Err(io::Error::from_raw_os_error(-ret as i32));

@@ -1,16 +1,17 @@
 use std::io;
+
 use xpmemtool::{
     core,
     formatter::Hex,
     linux::map::MapEntry,
     process::*,
-    types::{Address, Module},
+    types::{Address, Module, ProtectionType},
 };
 
 fn main() -> io::Result<()> {
     core::Xpmentool::init();
 
-    let process_name = "test";
+    let process_name = "vesktop";
     let process = Process::new(process_name)?;
 
     // let maps_file = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
@@ -38,12 +39,18 @@ fn main() -> io::Result<()> {
         .get_region_from_address(module.address.start)?;
 
     let a = baseregion.get_pages();
+    process.protect_memory(
+        &[baseregion.addresses.start],
+        1usize,
+        ProtectionType::PAGE_EXECUTE_READWRITE,
+    )?;
 
     xpmemtool::log!(region = format_args!("{baseregion}"));
 
     for x in a {
         xpmemtool::log!(page = %x);
     }
+
     //process.read_memory::<Address>(module.address.start)?;
     //process.inner.get_page_from_address(module.address.start)?;
 
