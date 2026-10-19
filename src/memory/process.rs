@@ -59,8 +59,8 @@ impl Process {
             .protect_memory(addresses, length as u64, protection)
     }
 
-    pub fn allocate_memory() -> io::Result<usize> {
-        Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
+    pub fn allocate_memory(&self) -> io::Result<Address> {
+        self.inner.allocate_memory()
     }
 
     pub fn free_memory() -> io::Result<()> {

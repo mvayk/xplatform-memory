@@ -123,7 +123,19 @@ impl SyscallInjector {
             }
         }
 
-        let ret = ptrace::getregs(pid)?.rax as i64;
+        let regs = match ptrace::getregs(pid) {
+            Ok(regs) => {
+                tracing::debug!("syscall ptrace getregs after cont was successful.");
+                regs
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "syscall failed to get regs after continue");
+                return Err(io::Error::from_raw_os_error(e as i32));
+            }
+        };
+
+        let ret = regs.rax as i64;
+
         if (-4095..0).contains(&ret) {
             tracing::error!(
                 pid = pid.as_raw(),

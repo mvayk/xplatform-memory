@@ -8,7 +8,7 @@ use std::io;
 
 use ProtectionType::*;
 
-fn match_protection(p: ProtectionType) -> i32 {
+pub fn match_protection(p: ProtectionType) -> i32 {
     match p {
         PAGE_NOACCESS => PROT_NONE,
         PAGE_EXECUTE => PROT_EXEC,

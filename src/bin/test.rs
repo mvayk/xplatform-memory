@@ -1,7 +1,7 @@
 use std::io;
 
 use xpmemtool::{
-    core,
+    core::{self, Xpmentool},
     formatter::Hex,
     linux::map::MapEntry,
     process::*,
@@ -11,7 +11,7 @@ use xpmemtool::{
 fn main() -> io::Result<()> {
     core::Xpmentool::init();
 
-    let process_name = "vesktop";
+    let process_name = "openttd.exe";
     let process = Process::new(process_name)?;
 
     // let maps_file = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
@@ -47,9 +47,12 @@ fn main() -> io::Result<()> {
 
     xpmemtool::log!(region = format_args!("{baseregion}"));
 
-    for x in a {
-        xpmemtool::log!(page = %x);
-    }
+    // for x in a {
+    //     xpmemtool::log!(page = %x);
+    // }
+
+    let ptr = process.allocate_memory()?;
+    xpmemtool::log!(ptr);
 
     //process.read_memory::<Address>(module.address.start)?;
     //process.inner.get_page_from_address(module.address.start)?;
