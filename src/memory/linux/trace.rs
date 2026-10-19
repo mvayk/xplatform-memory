@@ -125,6 +125,7 @@ impl SyscallInjector {
 
         let regs = match ptrace::getregs(pid) {
             Ok(regs) => {
+                tracing::info!(regs.rax, "rax");
                 tracing::debug!("syscall ptrace getregs after cont was successful.");
                 regs
             }
@@ -135,6 +136,7 @@ impl SyscallInjector {
         };
 
         let ret = regs.rax as i64;
+        tracing::trace!(ret, "ret as i64");
 
         if (-4095..0).contains(&ret) {
             tracing::error!(

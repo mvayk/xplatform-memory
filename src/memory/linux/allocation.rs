@@ -19,8 +19,11 @@ impl ProcessPlatform {
         let new_regs = InputRegisters {
             rax: libc::SYS_mmap as u64,
             rdi: 0,
-            rsi: page_size(),
+            rsi: 1u64, /* im not sure about this, but pretty sure that mmap can at minimum allocate a page so a single page is probably enough */
             rdx: prot,
+            r10: (libc::MAP_PRIVATE | libc::MAP_ANONYMOUS) as u64,
+            r8: -1i64 as u64,
+            r9: 0,
             ..Default::default()
         };
 
