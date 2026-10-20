@@ -7,7 +7,7 @@ use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields, format::Wri
 use tracing_subscriber::registry::LookupSpan;
 
 static INIT: Once = Once::new();
-static DEBUG_BUILD_LEVEL: &str = "trace";
+static DEBUG_BUILD_LEVEL: &str = "debug";
 
 #[macro_export]
 macro_rules! log {

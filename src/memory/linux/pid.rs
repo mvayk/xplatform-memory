@@ -1,7 +1,7 @@
 use crate::linux::platform::ProcessPlatform;
 use std::{fs, io};
 
-const PID_SEARCH_PATCH: [&str; 1] = ["sober"];
+const PID_SEARCH_PATCH: [&str; 2] = ["sober", "Main"];
 
 fn get_pids() -> io::Result<Vec<i32>> {
     let mut pids = Vec::new();
@@ -51,15 +51,16 @@ impl ProcessPlatform {
 
         for pid in pids {
             let comm_path = format!("/proc/{}/comm", pid);
-            if let Ok(comm) = fs::read_to_string(comm_path) {
-                tracing::trace!(comm, "find_first_pid_comm:");
+            if let Ok(comm_contents) = fs::read_to_string(comm_path)
+                && let Some(comm) = comm_contents.split('\n').next()
+            {
+                tracing::trace!(name, comm, "find_first_pid_comm:");
                 if comm == name && comm.eq_ignore_ascii_case(name) {
                     tracing::info!(pid, name, "find_first_pid_comm ok");
                     return Ok(pid);
                 }
             }
         }
-
         tracing::error!(name, "find_first_pid_comm failed");
         Err(io::Error::new(
             io::ErrorKind::NotFound,

@@ -14,25 +14,6 @@ use xpmemtool::{
 fn main() -> io::Result<()> {
     core::Xpmentool::init();
 
-    // let bwrap = Process::new("bwrap")?;
-    let sober = Process::new("openttd.exe")?;
-    // xpmemtool::log!(bwrap_pid = bwrap.pid);
-    // xpmemtool::log!(sober = sober.pid);
-
-    //let find_all_pids = sober.inner.find_all_pids("sober")?;
-
-    tracing::trace!("balls");
-
-    // for pid in find_all_pids {
-    //     xpmemtool::log!(pid);
-    // }
-
-    Ok(())
-}
-
-fn idkidk() -> io::Result<()> {
-    core::Xpmentool::init();
-
     let process_name = "openttd.exe";
     let process = Process::new(process_name)?;
 
