@@ -63,10 +63,6 @@ impl Process {
         self.inner.allocate_memory()
     }
 
-    pub fn free_memory() -> io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
-    }
-
     pub fn get_memory_protection(&self, address: Address) -> io::Result<ProtectionType> {
         self.inner.query_address_protection(address)
     }

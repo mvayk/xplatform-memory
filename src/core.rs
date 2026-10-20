@@ -5,7 +5,7 @@
     remove all the unnecessary io::Result<>
 */
 
-use crate::{formatter, log};
+use crate::formatter;
 use std::sync::OnceLock;
 
 static INITIALIZED: OnceLock<()> = OnceLock::new();
@@ -14,7 +14,7 @@ pub struct Xpmentool {}
 
 impl Xpmentool {
     pub fn init() {
-        INITIALIZED.get_or_init(|| formatter::init());
+        INITIALIZED.get_or_init(formatter::init);
     }
 
     pub fn is_initialized() -> bool {

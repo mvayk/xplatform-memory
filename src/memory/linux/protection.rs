@@ -21,12 +21,12 @@ pub fn match_protection(p: ProtectionType) -> i32 {
 
 pub fn protection_to_string<'a>(protection: ProtectionType) -> &'a str {
     match protection {
-        PAGE_NOACCESS => return "PAGE_NOACCESS",
-        PAGE_EXECUTE => return "PAGE_EXECUTE",
-        PAGE_EXECUTE_READ => return "PAGE_EXECUTE_READ",
-        PAGE_EXECUTE_READWRITE => return "PAGE_EXECUTE_READWRITE",
-        PAGE_READONLY => return "PAGE_READONLY",
-        PAGE_READWRITE => return "PAGE_READWRITE",
+        PAGE_NOACCESS => "PAGE_NOACCESS",
+        PAGE_EXECUTE => "PAGE_EXECUTE",
+        PAGE_EXECUTE_READ => "PAGE_EXECUTE_READ",
+        PAGE_EXECUTE_READWRITE => "PAGE_EXECUTE_READWRITE",
+        PAGE_READONLY => "PAGE_READONLY",
+        PAGE_READWRITE => "PAGE_READWRITE",
         //_ => { return Err(io::Error::new( io::ErrorKind::InvalidInput, "failed to convert protectiontype to string: unknown flag provided",)); }
     }
 }

@@ -95,6 +95,9 @@ impl std::fmt::Display for AddyRange {
     }
 }
 
+/// # Safety
+///
+/// Should not be used before the horsemen are ready.
 pub unsafe trait Pod: Copy + 'static {}
 
 macro_rules! impl_pod {

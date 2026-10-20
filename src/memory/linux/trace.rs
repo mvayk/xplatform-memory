@@ -3,7 +3,7 @@ use nix::sys::ptrace;
 use nix::sys::signal::Signal::SIGTRAP;
 use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::Pid;
-use std::{io, process};
+use std::io;
 
 #[derive(Default)]
 pub struct InputRegisters {
@@ -50,10 +50,9 @@ impl PtraceGuard {
             }
             other => {
                 tracing::error!(pid = pid.as_raw(), status = ?other, "unexpected wait status after attach");
-                Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("unexpected wait status after attach: {other:?}"),
-                ))
+                Err(io::Error::other(format!(
+                    "unexpected wait status after attach: {other:?}"
+                )))
             }
         }
     }
@@ -157,14 +156,14 @@ impl SyscallInjector {
         }
     }
 
-    fn restore(&self) -> bool {
+    fn restore(&self) -> io::Result<bool> {
+        use std::io::Error;
+
         let pid = self.guard.pid;
-        let mut result;
 
         match ptrace::write(pid, self.saved_regs.rip as *mut _, self.saved_word) {
             Ok(_) => {
                 tracing::info!("restore successfully wrote instruction pointer");
-                result = true;
             }
             Err(e) => {
                 tracing::error!(
@@ -173,44 +172,39 @@ impl SyscallInjector {
                     error = %e,
                     "restore failed to write rip"
                 );
-                //return Err(e.into());
-                result = false;
+                return Err(Error::other("restore failed to write rip"));
             }
         }
 
-        if result == false {
-            tracing::warn!("restore aborting");
-            return result;
-        }
+        tracing::warn!("restore aborting");
 
         match ptrace::setregs(pid, self.saved_regs) {
             Ok(_) => {
                 tracing::info!("restore successfully set registers");
-                result = true;
             }
             Err(e) => {
                 tracing::error!(
                     error = %e,
                     "restore failed to set registers"
                 );
-                // return Err(e.into());
-                result = false;
+
+                return Err(Error::other("restore failed to set registers"));
             }
         }
 
-        return result;
+        Ok(true)
     }
 
     /* this yucky */
     fn fake_drop(&self, exit: bool, skip: bool) {
-        if skip == false {
-            let restore_success = self.restore();
-            match restore_success {
-                false => tracing::error!(
+        if !skip {
+            let restore_success = self.restore().unwrap();
+
+            if !restore_success {
+                tracing::error!(
                     restore_success = restore_success,
                     "restore failed, is process alive?"
-                ),
-                true => {}
+                );
             }
         }
 

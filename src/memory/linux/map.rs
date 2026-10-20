@@ -6,7 +6,6 @@ use crate::types::{Address, AddyRange, ProtectionType};
 use std::{fmt, fs, io};
 
 const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
-const PAGE_ADDRESS_WARN_THRESHOLD: u64 = 10_000_000;
 
 /* aka Region */
 #[derive(Clone)]
@@ -54,7 +53,7 @@ impl MapEntry {
     pub fn get_pages(&self) -> Option<Page> {
         let step = page_size();
 
-        if self.get_size() % step != 0 {
+        if !self.get_size().is_multiple_of(step) {
             tracing::warn!(
                 range = %self.addresses,
                 size = self.get_size(),
@@ -452,10 +451,7 @@ impl ProcessPlatform {
                 range = %region.addresses,
                 "region contained address but page_at returned None"
             );
-            io::Error::new(
-                io::ErrorKind::Other,
-                "region contained address but no page found",
-            )
+            io::Error::other("region contained address but no page found")
         })?;
 
         tracing::info!(

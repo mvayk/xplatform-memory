@@ -13,7 +13,7 @@ pub fn main() -> io::Result<()> {
         (final)b + 0x90
     */
     let level1 = process.read_memory::<Address>(module_base + 0xF97380)?;
-    let level2 = process.read_memory::<Address>(level1 + 0x0)?;
+    let level2 = process.read_memory::<Address>(level1 /*+ 0x0 */)?;
     let money_addy = level2 + 0x90;
 
     process.read_memory::<i64>(money_addy)?;

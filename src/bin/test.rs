@@ -1,4 +1,7 @@
+#![allow(unused)]
 use std::io;
+
+use tracing::warn;
 
 use xpmemtool::{
     core::{self, Xpmentool},
@@ -9,6 +12,25 @@ use xpmemtool::{
 };
 
 fn main() -> io::Result<()> {
+    core::Xpmentool::init();
+
+    // let bwrap = Process::new("bwrap")?;
+    let sober = Process::new("openttd.exe")?;
+    // xpmemtool::log!(bwrap_pid = bwrap.pid);
+    // xpmemtool::log!(sober = sober.pid);
+
+    //let find_all_pids = sober.inner.find_all_pids("sober")?;
+
+    tracing::trace!("balls");
+
+    // for pid in find_all_pids {
+    //     xpmemtool::log!(pid);
+    // }
+
+    Ok(())
+}
+
+fn idkidk() -> io::Result<()> {
     core::Xpmentool::init();
 
     let process_name = "openttd.exe";
@@ -52,7 +74,15 @@ fn main() -> io::Result<()> {
     // }
 
     let ptr = process.allocate_memory()?;
-    xpmemtool::log!(ptr);
+    process.inner.get_region_from_address(ptr)?;
+
+    let idk = process.read_memory::<u64>(ptr)?;
+    xpmemtool::log!(idk);
+
+    process.write_memory(idk, &[64])?;
+
+    let idk = process.read_memory::<u64>(ptr)?;
+    xpmemtool::log!(idk);
 
     //process.read_memory::<Address>(module.address.start)?;
     //process.inner.get_page_from_address(module.address.start)?;
