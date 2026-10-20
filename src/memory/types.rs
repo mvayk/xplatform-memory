@@ -20,6 +20,16 @@ pub enum ProtectionType {
 
 pub type Address = u64;
 
+const PAGE_SIZE: u64 = 0x4096;
+
+pub fn address_align_to_page_down(address: Address) -> Address {
+    address & !(PAGE_SIZE - 1)
+}
+
+pub fn address_align_to_page_up(address: Address) -> Address {
+    (address + PAGE_SIZE - 1) & !(PAGE_SIZE - 1)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AddyRange {
     pub start: Address,

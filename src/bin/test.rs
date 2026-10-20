@@ -6,7 +6,7 @@ use tracing::warn;
 use xpmemtool::{
     core::{self, Xpmentool},
     formatter::Hex,
-    linux::map::MapEntry,
+    linux::{map::MapEntry, readwrite::MemData},
     process::*,
     types::{Address, Module, ProtectionType},
 };
@@ -50,6 +50,8 @@ fn main() -> io::Result<()> {
 
     xpmemtool::log!(region = format_args!("{baseregion}"));
 
+    xpmemtool::log!("not a successful one");
+
     // for x in a {
     //     xpmemtool::log!(page = %x);
     // }
@@ -57,13 +59,12 @@ fn main() -> io::Result<()> {
     let ptr = process.allocate_memory()?;
     process.inner.get_region_from_address(ptr)?;
 
-    let idk = process.read_memory::<u64>(ptr)?;
-    xpmemtool::log!(idk);
-
-    process.write_memory(idk, &[64])?;
-
-    let idk = process.read_memory::<u64>(ptr)?;
-    xpmemtool::log!(idk);
+    let memdatas = process.read_memory(&[ptr])?;
+    for memd in memdatas {
+        for b in memd.word {
+            xpmemtool::log!(b);
+        }
+    }
 
     //process.read_memory::<Address>(module.address.start)?;
     //process.inner.get_page_from_address(module.address.start)?;

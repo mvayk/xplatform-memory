@@ -1,8 +1,10 @@
 use crate::formatter::Hex;
-use crate::linux::page::{Page, page_align_down, page_size};
+use crate::linux::page::{Page, page_size};
 use crate::linux::platform::ProcessPlatform;
 use crate::linux::protection::protection_to_string;
-use crate::types::{Address, AddyRange, ProtectionType};
+use crate::types::{
+    Address, AddyRange, ProtectionType, address_align_to_page_down, address_align_to_page_up,
+};
 use std::{fmt, fs, io};
 
 const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
@@ -102,7 +104,7 @@ impl MapEntry {
         }
 
         let size = page_size();
-        let aligned = page_align_down(address);
+        let aligned = address_align_to_page_down(address);
 
         let start_address = aligned.max(self.addresses.start);
         let end_address = (aligned + size).min(self.addresses.end);

@@ -29,10 +29,6 @@ pub struct Page {
     pub region: MapEntry,
 }
 
-pub fn page_align_down(address: Address) -> u64 {
-    address & !(page_size() - 1)
-}
-
 impl Page {
     pub fn get_size(&self) -> u64 {
         self.addresses.end - self.addresses.start

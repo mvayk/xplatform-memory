@@ -1,6 +1,9 @@
-use std::io::Error;
 #[cfg(target_os = "linux")]
-use std::{fs, io, path::Path};
+use std::{
+    fs,
+    io::{self, Error},
+    path::Path,
+};
 
 use xpmemtool::{
     core::{self},
