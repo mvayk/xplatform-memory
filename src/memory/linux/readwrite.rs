@@ -109,7 +109,7 @@ impl ProcessPlatform {
 
         let mut data: Vec<MemData> = Vec::with_capacity(addresses.len());
 
-        for (index, &address) in addresses.iter().enumerate() {
+        for (_, &address) in addresses.iter().enumerate() {
             let mut word = [0u8; 8];
             let result = mem_file.read_exact_at(&mut word, address);
             match result {
@@ -119,11 +119,7 @@ impl ProcessPlatform {
                         read = format_args!("{word:#x?}"),
                         "read_memory_long successful for address:",
                     );
-                    let address_offset = (address + index as u64) as Address;
-                    data.push(MemData {
-                        address: address_offset,
-                        word,
-                    });
+                    data.push(MemData { address, word });
                 }
                 Err(e) => {
                     tracing::warn!(addr = format_args!("{address:?}"), error = %e, "read_memory_long encountered an error on addr:");
