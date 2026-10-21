@@ -35,7 +35,6 @@ fn process_addresses(process: &ProcessPlatform, addresses: &[Address]) -> io::Re
             );
         }
     }
-
     Ok(readable)
 }
 
@@ -54,7 +53,21 @@ impl ProcessPlatform {
             }
             data.push(MemData { address, word });
         }
-
         Ok(data)
+    }
+
+    pub fn write_memory(&self, addresses: &[Address], data: &[u8]) -> io::Result<()> {
+        let addresses: Vec<Address> = process_addresses(self, addresses)?;
+        let mem_file = fs::OpenOptions::new()
+            .write(true)
+            .open(format!("/proc/{}/mem", self.pid))?;
+
+        for address in addresses {
+            if mem_file.write_all_at(&data, address).is_err() {
+                tracing::warn!("write_memory skipping {:#x} due to something lol", address);
+                continue;
+            }
+        }
+        Ok(())
     }
 }
