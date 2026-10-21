@@ -1,8 +1,7 @@
 use crate::core::Xpmentool;
-use crate::linux::readwrite::MemData;
-use crate::types::{Address, Module, Pod, ProtectionType};
+use crate::types::{Address, Module, ProtectionType};
 
-use std::io::{self, Error};
+use std::io::{self};
 
 #[cfg(target_os = "windows")]
 use crate::memory::windows::memory::platform;
@@ -41,14 +40,12 @@ impl Process {
         Ok(module_platform.addresses.start)
     }
 
-    pub fn read_memory(&self, addresses: &[Address]) -> io::Result<Vec<MemData>> {
-        //self.inner.read_memory(address)
-        self.inner.read_memory(addresses)
+    pub fn read_memory(&self, address: Address) -> io::Result<u64> {
+        self.inner.read_memory(address)
     }
 
-    pub fn write_memory<T: Pod>(&self, address: Address, value: &T) -> io::Result<()> {
-        //self.inner.write_memory(address, value)
-        Err(Error::other("not implemented"))
+    pub fn write_memory(&self, address: Address, data: u64) -> io::Result<()> {
+        self.inner.write_memory(address, data)
     }
 
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */

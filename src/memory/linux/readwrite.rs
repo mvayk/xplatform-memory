@@ -1,5 +1,6 @@
 use crate::linux::platform::ProcessPlatform;
 use crate::types::Address;
+use std::io::Error;
 use std::os::unix::fs::FileExt;
 use std::{fmt, fs, io};
 
@@ -39,35 +40,96 @@ fn process_addresses(process: &ProcessPlatform, addresses: &[Address]) -> io::Re
 }
 
 impl ProcessPlatform {
-    pub fn read_memory(&self, addresses: &[Address]) -> io::Result<Vec<MemData>> {
-        let addresses: Vec<Address> = process_addresses(self, addresses)?;
+    pub fn read_memory(&self, addy: Address) -> io::Result<u64> {
+        let addresses: Vec<Address> = process_addresses(self, &[addy])?;
         let mem_file = fs::File::open(format!("/proc/{}/mem", self.pid))?;
 
-        let mut data: Vec<MemData> = Vec::with_capacity(addresses.len());
+        let address = addresses[0];
 
-        for address in addresses {
-            let mut word = [0u8; 8];
-            if mem_file.read_exact_at(&mut word, address).is_err() {
-                tracing::warn!("read_memory skipping due to something lol");
-                continue;
+        let mut word = [0u8; 8];
+        match mem_file.read_exact_at(&mut word, address) {
+            Ok(_) => {
+                tracing::info!(
+                    read = format_args!("{word:#x?}"),
+                    addr = format_args!("{address:?}"),
+                    "read_memory successful:"
+                );
             }
-            data.push(MemData { address, word });
+            Err(e) => {
+                tracing::error!(addr = format_args!("{address:?}"), error = %e, "read_memory encountered an error on addr:");
+                return Err(Error::new(
+                    io::ErrorKind::Interrupted,
+                    "read_memory failed to read",
+                ));
+            }
         }
-        Ok(data)
+
+        Ok(u64::from_le_bytes(word))
     }
 
-    pub fn write_memory(&self, addresses: &[Address], data: &[u8]) -> io::Result<()> {
+    pub fn write_memory(&self, addy: Address, data: u64) -> io::Result<()> {
+        let addresses: Vec<Address> = process_addresses(self, &[addy])?;
+        let mem_file = fs::OpenOptions::new()
+            .write(true)
+            .open(format!("/proc/{}/mem", self.pid))?;
+
+        let address = addresses[0];
+        let data = data.to_le_bytes();
+
+        match mem_file.write_all_at(&data, address) {
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(addr = format_args!("{address:?}"), error = %e, "write_memory encountered an error on addr:");
+                return Err(Error::new(
+                    io::ErrorKind::Interrupted,
+                    "write_memory failed to write",
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn write_memory_long(&self, addresses: &[Address], data: &[u8]) -> io::Result<()> {
         let addresses: Vec<Address> = process_addresses(self, addresses)?;
         let mem_file = fs::OpenOptions::new()
             .write(true)
             .open(format!("/proc/{}/mem", self.pid))?;
 
         for address in addresses {
-            if mem_file.write_all_at(&data, address).is_err() {
-                tracing::warn!("write_memory skipping {:#x} due to something lol", address);
-                continue;
+            mem_file.write_all_at(&data, address).inspect_err(|e| tracing::warn!(addr = format_args!("{address:?}"), error = %e, "write_memory_long encountered an error on addr:"))?;
+        }
+
+        Ok(())
+    }
+
+    pub fn read_memory_long(&self, addresses: &[Address]) -> io::Result<Vec<MemData>> {
+        let addresses: Vec<Address> = process_addresses(self, addresses)?;
+        let mem_file = fs::File::open(format!("/proc/{}/mem", self.pid))?;
+
+        let mut data: Vec<MemData> = Vec::with_capacity(addresses.len());
+
+        for (index, &address) in addresses.iter().enumerate() {
+            let mut word = [0u8; 8];
+            let result = mem_file.read_exact_at(&mut word, address);
+            match result {
+                Ok(_) => {
+                    tracing::info!(
+                        address,
+                        read = format_args!("{word:#x?}"),
+                        "read_memory_long successful for address:",
+                    );
+                    let address_offset = (address + index as u64) as Address;
+                    data.push(MemData {
+                        address: address_offset,
+                        word,
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(addr = format_args!("{address:?}"), error = %e, "read_memory_long encountered an error on addr:");
+                }
             }
         }
-        Ok(())
+        Ok(data)
     }
 }

@@ -37,7 +37,8 @@ fn main() -> io::Result<()> {
         ProtectionType::PAGE_EXECUTE_READWRITE,
     )?;
 
-    let memdatas = process.read_memory(&[allocation])?;
+    let memdatas = process.inner.read_memory_long(&[allocation])?;
+
     for memdata in memdatas {
         let converted = memdata.to_u64();
         xpmemtool::log!(converted);
