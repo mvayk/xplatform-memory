@@ -16,11 +16,38 @@ fn main() -> io::Result<()> {
 
     let process_name = "openttd.exe";
     let process = Process::new(process_name)?;
+    let mut module: Module = process.get_module(process_name)?;
 
-    // let maps_file = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
-    // println!("{}", maps_file);
+    let mut baseregion = process
+        .inner
+        .get_region_from_address(module.address.start)?;
 
-    let module: Module = process.get_module(process_name)?;
+    process.protect_memory(
+        &[baseregion.addresses.start],
+        1usize,
+        ProtectionType::PAGE_EXECUTE_READWRITE,
+    )?;
+
+    baseregion.update(&process);
+
+    let modulepid = baseregion.pid;
+    let modulename = module.name;
+    xpmemtool::log!(base = format_args!("{baseregion} at {modulename} in {modulepid}"));
+
+    let allocation = process.allocate_memory()?;
+    process.inner.get_region_from_address(allocation)?;
+
+    let memdatas = process.read_memory(&[allocation])?;
+    for memdata in memdatas {
+        let converted = memdata.to_u64();
+        xpmemtool::log!(converted);
+        xpmemtool::log!(%memdata);
+    }
+
+    Ok(())
+}
+
+fn stack_check(process: &Process) -> io::Result<()> {
     let filtered_regions = process.inner.get_filtered_regions()?;
 
     for region in filtered_regions {
@@ -36,38 +63,6 @@ fn main() -> io::Result<()> {
             }
         }
     }
-
-    let baseregion = process
-        .inner
-        .get_region_from_address(module.address.start)?;
-
-    let a = baseregion.get_pages();
-    process.protect_memory(
-        &[baseregion.addresses.start],
-        1usize,
-        ProtectionType::PAGE_EXECUTE_READWRITE,
-    )?;
-
-    xpmemtool::log!(region = format_args!("{baseregion}"));
-
-    xpmemtool::log!("not a successful one");
-
-    // for x in a {
-    //     xpmemtool::log!(page = %x);
-    // }
-
-    let ptr = process.allocate_memory()?;
-    process.inner.get_region_from_address(ptr)?;
-
-    let memdatas = process.read_memory(&[ptr])?;
-    for memdata in memdatas {
-        let converted = memdata.to_u64();
-        xpmemtool::log!(converted);
-        xpmemtool::log!(%memdata);
-    }
-
-    //process.read_memory::<Address>(module.address.start)?;
-    //process.inner.get_page_from_address(module.address.start)?;
 
     Ok(())
 }

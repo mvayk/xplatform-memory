@@ -105,6 +105,7 @@ impl std::fmt::Display for AddyRange {
     }
 }
 
+/// DEPRECATED PROBABLY
 /// # Safety
 ///
 /// Should not be used before the horsemen are ready.

@@ -2,9 +2,8 @@ use crate::formatter::Hex;
 use crate::linux::page::{Page, page_size};
 use crate::linux::platform::ProcessPlatform;
 use crate::linux::protection::protection_to_string;
-use crate::types::{
-    Address, AddyRange, ProtectionType, address_align_to_page_down, address_align_to_page_up,
-};
+use crate::process::Process;
+use crate::types::{Address, AddyRange, ProtectionType, address_align_to_page_down};
 use std::{fmt, fs, io};
 
 const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
@@ -19,6 +18,7 @@ pub struct MapEntry {
     pub dev: (u32, u32),
     pub inode: u64,
     pub module_name: String,
+    pub pid: i32,
 }
 
 impl fmt::Display for MapEntry {
@@ -40,6 +40,15 @@ impl fmt::Display for MapEntry {
 }
 
 impl MapEntry {
+    pub fn update(&mut self, process: &Process) -> io::Result<()> {
+        let updated_entry =
+            ProcessPlatform::get_region_from_address(&process.inner, self.addresses.start)?;
+
+        *self = updated_entry;
+
+        Ok(())
+    }
+
     pub fn get_size(&self) -> u64 {
         self.addresses.end - self.addresses.start
     }
@@ -217,7 +226,7 @@ fn parse_dev(dev: &str, line: &str) -> io::Result<(u32, u32)> {
     Ok((major, minor))
 }
 
-fn parse_line(line: &str) -> io::Result<MapEntry> {
+fn parse_line(line: &str, pid: i32) -> io::Result<MapEntry> {
     let mut it = line.splitn(6, ' ');
 
     let range = it.next().ok_or_else(|| invalid("missing range", line))?;
@@ -279,6 +288,7 @@ fn parse_line(line: &str) -> io::Result<MapEntry> {
         dev,
         inode,
         module_name: module_name.to_string(),
+        pid,
     })
 }
 
@@ -307,7 +317,7 @@ impl ProcessPlatform {
                 continue;
             }
 
-            let entry = parse_line(line).map_err(|e| {
+            let entry = parse_line(line, self.pid).map_err(|e| {
                 tracing::error!(
                     pid = self.pid,
                     line_number,

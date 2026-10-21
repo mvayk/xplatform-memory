@@ -112,7 +112,9 @@ impl SyscallInjector {
         ptrace::cont(pid, None)
             .inspect_err(|e| tracing::error!(error = %e, "syscall failed to continue process"))?;
         match waitpid(pid, None)? {
-            WaitStatus::Stopped(_, SIGTRAP) => {}
+            WaitStatus::Stopped(_, SIGTRAP) => {
+                tracing::debug!(pid = format_args!("{pid}"), "syscall waiting for")
+            }
             other => {
                 tracing::error!(pid = pid.as_raw(), regs.rax, status = ?other, "unexpected wait status during syscall");
                 //self.fake_drop(true, false);
@@ -124,7 +126,6 @@ impl SyscallInjector {
 
         let regs = match ptrace::getregs(pid) {
             Ok(regs) => {
-                tracing::info!(regs.rax, "rax");
                 tracing::debug!("syscall ptrace getregs after cont was successful.");
                 regs
             }
@@ -159,6 +160,7 @@ impl SyscallInjector {
     fn restore(&self) -> io::Result<bool> {
         use std::io::Error;
 
+        use crate::formatter::Hex;
         let pid = self.guard.pid;
 
         match ptrace::write(pid, self.saved_regs.rip as *mut _, self.saved_word) {
@@ -167,16 +169,15 @@ impl SyscallInjector {
             }
             Err(e) => {
                 tracing::error!(
-                    rip = self.saved_regs.rip,
+                    rip = %Hex(self.saved_regs.rip),
+                    pid = format_args!("{pid:?}"),
                     word = self.saved_word,
                     error = %e,
-                    "restore failed to write rip"
+                    "restore failed to write rip, aborting"
                 );
                 return Err(Error::other("restore failed to write rip"));
             }
         }
-
-        tracing::warn!("restore aborting");
 
         match ptrace::setregs(pid, self.saved_regs) {
             Ok(_) => {
