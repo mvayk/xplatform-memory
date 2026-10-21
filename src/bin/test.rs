@@ -60,10 +60,10 @@ fn main() -> io::Result<()> {
     process.inner.get_region_from_address(ptr)?;
 
     let memdatas = process.read_memory(&[ptr])?;
-    for memd in memdatas {
-        for b in memd.word {
-            xpmemtool::log!(b);
-        }
+    for memdata in memdatas {
+        let converted = memdata.to_u64();
+        xpmemtool::log!(converted);
+        xpmemtool::log!(%memdata);
     }
 
     //process.read_memory::<Address>(module.address.start)?;
