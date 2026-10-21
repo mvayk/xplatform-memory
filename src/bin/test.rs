@@ -22,12 +22,6 @@ fn main() -> io::Result<()> {
         .inner
         .get_region_from_address(module.address.start)?;
 
-    process.protect_memory(
-        &[baseregion.addresses.start],
-        1usize,
-        ProtectionType::PAGE_EXECUTE_READWRITE,
-    )?;
-
     baseregion.update(&process);
 
     let modulepid = baseregion.pid;
@@ -35,7 +29,13 @@ fn main() -> io::Result<()> {
     xpmemtool::log!(base = format_args!("{baseregion} at {modulename} in {modulepid}"));
 
     let allocation = process.allocate_memory()?;
-    process.inner.get_region_from_address(allocation)?;
+    //process.inner.get_page_from_address(allocation)?;
+
+    process.protect_memory(
+        &[allocation],
+        1usize,
+        ProtectionType::PAGE_EXECUTE_READWRITE,
+    )?;
 
     let memdatas = process.read_memory(&[allocation])?;
     for memdata in memdatas {

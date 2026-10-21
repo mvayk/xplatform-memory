@@ -1,4 +1,4 @@
-use crate::linux::page::{self, Page};
+use crate::linux::page::Page;
 use crate::linux::platform::ProcessPlatform;
 use crate::linux::trace::{InputRegisters, SyscallInjector};
 use crate::types::{Address, ProtectionType, address_align_to_page_down};
@@ -47,8 +47,7 @@ impl ProcessPlatform {
         let injector = SyscallInjector::new(Pid::from_raw(self.pid))?;
         for addr in addresses {
             let address = address_align_to_page_down(*addr);
-            let page = self.get_page_from_address(address)?;
-            tracing::trace!(page = %page, address);
+            tracing::debug!(self.pid, "protect_memory called mprotect on:");
             let new_regs = InputRegisters {
                 rax: libc::SYS_mprotect as u64,
                 rdi: address,
@@ -61,7 +60,11 @@ impl ProcessPlatform {
             };
             match injector.syscall(new_regs) {
                 Ok(ret) if ret < 0 => {
-                    tracing::error!(addr = format_args!("{addr:#x}"), ret, "mprotect failed");
+                    tracing::error!(
+                        addr = format_args!("{addr:#x}"),
+                        ret,
+                        "protect_memory: syscall returned failure"
+                    );
                     return Err(io::Error::from_raw_os_error(-ret as i32));
                 }
                 Ok(_) => {
@@ -71,7 +74,7 @@ impl ProcessPlatform {
                     )
                 }
                 Err(e) => {
-                    tracing::error!(addr = format_args!("{addr:#x}"), error = %e, "syscall failed");
+                    tracing::error!(addr = format_args!("{address:#x}"), error = %e, "memory_protect: syscall MUNTED");
                     return Err(e);
                 }
             }
