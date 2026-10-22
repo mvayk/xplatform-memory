@@ -44,8 +44,8 @@ impl Process {
         self.inner.read_memory(address)
     }
 
-    pub fn write_memory(&self, address: Address, data: u64) -> io::Result<()> {
-        self.inner.write_memory(address, data)
+    pub fn write_memory<T: Copy>(&self, address: Address, data: T) -> io::Result<()> {
+        self.inner.write_memory(address, &data)
     }
 
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */

@@ -2,9 +2,18 @@ use crate::{
     linux::{map::MapEntry, platform::ProcessPlatform},
     types::AddyRange,
 };
-use std::{fs, io, path::Path};
+use std::{
+    fs,
+    io::{self, Error, ErrorKind},
+    path::Path,
+};
 
 fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
+    if module_name == "" {
+        tracing::trace!("get_module_path given nothing");
+        return Err(Error::new(ErrorKind::NotSeekable, "module_name was empty"));
+    }
+    tracing::debug!(module_name, "get_module_path fed:");
     let maps = fs::read_to_string(format!("/proc/{}/maps", pid))?;
     for line in maps.lines() {
         let path = match line.splitn(6, ' ').nth(5) {

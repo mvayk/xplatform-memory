@@ -14,10 +14,7 @@ pub fn main() -> io::Result<()> {
     let max_fps_address = 0x12A03F30;
 
     process.write_memory(max_fps_address, &260.0f32)?;
-    println!(
-        "FPS cap set to {:?}",
-        process.read_memory::<f32>(max_fps_address)?
-    );
+    println!("FPS cap set to {:?}", process.read_memory(max_fps_address)?);
 
     /* semi fov fix
     func signature:

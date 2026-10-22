@@ -21,7 +21,7 @@ pub fn main() -> io::Result<()> {
     let money_addy = level2 + 0x90;
 
     process.read_memory(money_addy)?;
-    process.write_memory(money_addy, 12000000u64)?;
+    process.write_memory(money_addy, &12000000u64)?;
 
     Ok(())
 }

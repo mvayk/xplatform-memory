@@ -1,8 +1,10 @@
+use libc::seccomp_data;
+
 use crate::linux::platform::ProcessPlatform;
 use crate::types::Address;
 use std::io::Error;
 use std::os::unix::fs::FileExt;
-use std::{fmt, fs, io};
+use std::{fmt, fs, io, mem};
 
 pub struct MemData {
     pub address: Address,
@@ -19,6 +21,10 @@ impl MemData {
     pub fn to_u64(&self) -> u64 {
         u64::from_le_bytes(self.word)
     }
+}
+
+fn to_byte_slice<T: Copy>(data: &T) -> &[u8] {
+    unsafe { std::slice::from_raw_parts(data as *const T as *const u8, mem::size_of::<T>()) }
 }
 
 fn process_addresses(process: &ProcessPlatform, addresses: &[Address]) -> io::Result<Vec<Address>> {
@@ -38,6 +44,12 @@ fn process_addresses(process: &ProcessPlatform, addresses: &[Address]) -> io::Re
     }
     Ok(readable)
 }
+
+/* backends
+    process_vm
+    memfile
+    ptrace
+*/
 
 impl ProcessPlatform {
     pub fn read_memory(&self, addy: Address) -> io::Result<u64> {
@@ -67,14 +79,14 @@ impl ProcessPlatform {
         Ok(u64::from_le_bytes(word))
     }
 
-    pub fn write_memory(&self, addy: Address, data: u64) -> io::Result<()> {
+    pub fn write_memory<T: Copy>(&self, addy: Address, data: &T) -> io::Result<()> {
         let addresses: Vec<Address> = process_addresses(self, &[addy])?;
         let mem_file = fs::OpenOptions::new()
             .write(true)
             .open(format!("/proc/{}/mem", self.pid))?;
 
         let address = addresses[0];
-        let data = data.to_le_bytes();
+        let data = to_byte_slice(data);
 
         match mem_file.write_all_at(&data, address) {
             Ok(_) => {}

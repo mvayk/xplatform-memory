@@ -6,7 +6,14 @@ use crate::process::Process;
 use crate::types::{Address, AddyRange, ProtectionType, address_align_to_page_down};
 use std::{fmt, fs, io};
 
-const SPECIAL_REGIONS: [&str; 4] = ["[vvar]", "[vvar_vclock]", "[vdso]", "[vsyscall]"];
+const SPECIAL_REGIONS: [&str; 6] = [
+    "[vvar]",
+    "[vvar_vclock]",
+    "[vdso]",
+    "[vsyscall]",
+    "[heap]",
+    "[stack]",
+];
 
 /* aka Region */
 #[derive(Clone)]
