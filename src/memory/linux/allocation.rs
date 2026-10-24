@@ -1,3 +1,4 @@
+use libc::c_void;
 use nix::unistd::Pid;
 use std::io;
 
@@ -43,5 +44,23 @@ impl ProcessPlatform {
                 Err(e)
             }
         }
+    }
+
+    pub fn free_memory(&self, address: Address) -> io::Result<()> {
+        let injector = SyscallInjector::new(Pid::from_raw(self.pid))?;
+
+        let new_regs = InputRegisters {
+            rax: libc::SYS_munmap as u64,
+            rdi: address as *mut c_void as u64,
+            rsi: 1u64,
+            ..Default::default()
+        };
+
+        let _ = injector.syscall(new_regs).or_else(|e| {
+            tracing::error!("free memory syscall failure");
+            Err(e)
+        });
+
+        Ok(())
     }
 }

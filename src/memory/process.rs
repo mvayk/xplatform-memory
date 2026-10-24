@@ -31,7 +31,7 @@ impl Process {
         Ok(Module {
             name: module_platform.name.to_string(),
             process: self,
-            address: module_platform.addresses,
+            addresses: module_platform.addresses,
         })
     }
 
@@ -61,6 +61,10 @@ impl Process {
 
     pub fn allocate_memory(&self) -> io::Result<Address> {
         self.inner.allocate_memory()
+    }
+
+    pub fn free_memory(&self, address: Address) -> io::Result<()> {
+        self.inner.free_memory(address)
     }
 
     pub fn get_memory_protection(&self, address: Address) -> io::Result<ProtectionType> {

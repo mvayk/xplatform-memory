@@ -20,7 +20,7 @@ fn main() -> io::Result<()> {
 
     let mut baseregion = process
         .inner
-        .get_region_from_address(module.address.start)?;
+        .get_region_from_address(module.addresses.start)?;
 
     baseregion.update(&process);
 
@@ -30,6 +30,8 @@ fn main() -> io::Result<()> {
 
     let allocation = process.allocate_memory()?;
     //process.inner.get_page_from_address(allocation)?;
+
+    let free = process.free_memory(allocation)?;
 
     process.protect_memory(
         &[allocation],
