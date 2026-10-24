@@ -1,21 +1,10 @@
 use crate::memory::process::Process;
-use std::fmt;
 use std::ops::Range;
 
 pub struct Module<'a> {
     pub name: String,
     pub process: &'a Process,
-    pub addresses: AddyRange,
-}
-
-impl fmt::Display for Module<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Module: FilePath: {}, PID: {}, AddyRange: {}",
-            self.name, self.process.pid, self.addresses,
-        )
-    }
+    pub address: AddyRange,
 }
 
 #[allow(non_camel_case_types)]

@@ -74,7 +74,7 @@ impl ProcessPlatform {
                     )
                 }
                 Err(e) => {
-                    tracing::error!(addr = format_args!("{address:#x}"), error = %e, "protect_memory: syscall MUNTED");
+                    tracing::error!(addr = format_args!("{address:#x}"), error = %e, "memory_protect: syscall MUNTED");
                     return Err(e);
                 }
             }

@@ -103,8 +103,6 @@ impl SyscallInjector {
 
     // pub fn syscall(&self, nr: i64, args: [u64; 6]) -> io::Result<i64> {
     pub fn syscall(&self, new_regs: InputRegisters) -> io::Result<i64> {
-        use crate::formatter::Hex;
-
         let pid = self.guard.pid;
         let saved_regs = self.saved_regs;
         let regs = new_regs.to_libc_user_regs(saved_regs);
@@ -143,7 +141,7 @@ impl SyscallInjector {
         if (-4095..0).contains(&ret) {
             tracing::error!(
                 pid = pid.as_raw(),
-                rax = %Hex(regs.rax),
+                regs.rax,
                 ret,
                 "remote syscall returned error"
             );

@@ -1,3 +1,5 @@
+use libc::seccomp_data;
+
 use crate::linux::platform::ProcessPlatform;
 use crate::types::Address;
 use std::io::Error;

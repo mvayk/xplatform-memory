@@ -10,9 +10,6 @@ use xpmemtool::{
     process::*,
     types::Module,
 };
-
-const SOBER_MODULE_NAME: &str = "/home/mvayk/.var/app/org.vinegarhq.Sober/data/sober/packages/x86_64/com.roblox.client/base.apk";
-
 fn main() -> io::Result<()> {
     core::Xpmentool::init();
 
@@ -30,18 +27,11 @@ fn main() -> io::Result<()> {
         }
     }
 
-    for module in &modules {
-        let name = &module.name;
+    for module in modules {
+        let name = module.name;
         println!("{name}");
         xpmemtool::log!(m = format_args!("{name}"));
     }
-
-    let baseapk = modules
-        .iter()
-        .find(|m| m.name == SOBER_MODULE_NAME)
-        .unwrap();
-
-    xpmemtool::log!(baseapk = %baseapk);
 
     Ok(())
 }

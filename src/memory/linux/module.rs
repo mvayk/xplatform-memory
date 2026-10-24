@@ -1,9 +1,9 @@
 use crate::{
-    linux::{map::MapEntry, platform::ProcessPlatform, protection::protection_to_string},
+    linux::{map::MapEntry, platform::ProcessPlatform},
     types::AddyRange,
 };
 use std::{
-    fmt, fs,
+    fs,
     io::{self, Error, ErrorKind},
     path::Path,
 };
@@ -48,16 +48,6 @@ pub struct ModuleP<'a> {
     pub name: String, /* file path */
     pub process: &'a ProcessPlatform,
     pub addresses: AddyRange,
-}
-
-impl fmt::Display for ModuleP<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Module: FilePath: {}, PID: {}, AddyRange: {}",
-            self.name, self.process.pid, self.addresses,
-        )
-    }
 }
 
 impl<'a> ModuleP<'a> {
