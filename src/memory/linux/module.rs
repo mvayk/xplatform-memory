@@ -9,11 +9,11 @@ use std::{
 };
 
 fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
-    if module_name == "" {
-        tracing::trace!("get_module_path given nothing");
-        return Err(Error::new(ErrorKind::NotSeekable, "module_name was empty"));
+    if module_name.is_empty() {
+        tracing::trace!("get_module_path called with empty module name");
+        return Err(Error::new(ErrorKind::InvalidInput, "module_name was empty"));
     }
-    tracing::debug!(module_name, "get_module_path fed:");
+    tracing::debug!(%module_name, "get_module_path searching for module");
     let maps = fs::read_to_string(format!("/proc/{}/maps", pid))?;
     for line in maps.lines() {
         let path = match line.splitn(6, ' ').nth(5) {
@@ -31,15 +31,15 @@ fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
                 .is_some_and(|f| f == module_name);
 
         if matches {
-            tracing::info!(module_name, path, "get_module_path successful");
+            tracing::info!(%module_name, %path, "get_module_path found module");
             return Ok(path.to_string());
         }
     }
 
-    tracing::error!(module_name, "get_module_path failed");
+    tracing::error!(%module_name, "get_module_path failed to find module");
     Err(io::Error::new(
         io::ErrorKind::NotFound,
-        "Failed to find module path",
+        format!("Failed to find module path for {}", module_name),
     ))
 }
 
@@ -76,10 +76,10 @@ impl ProcessPlatform {
         let range = self.get_module_range(path.as_str())?;
 
         tracing::info!(
-            module_name,
-            path,
+            %module_name,
+            %path,
             %range,
-            self.pid,
+            pid = self.pid,
             "get_module successful"
         );
 
@@ -99,11 +99,11 @@ impl ProcessPlatform {
 
         if regions.is_empty() {
             tracing::error!(
-                self.pid,
-                name,
+                pid = self.pid,
+                %name,
                 "get_module_regions failed to find module regions"
             );
-            return Err(io::Error::new(io::ErrorKind::NotFound, "module not found"));
+            return Err(io::Error::new(io::ErrorKind::NotFound, format!("module {} not found", name)));
         }
 
         Ok(regions)
@@ -115,15 +115,15 @@ impl ProcessPlatform {
             .iter()
             .map(|r| r.addresses.start)
             .min()
-            .unwrap();
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no regions found"))?;
         let end = module_regions
             .iter()
             .map(|r| r.addresses.end)
             .max()
-            .unwrap();
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no regions found"))?;
 
-        for region in module_regions {
-            tracing::trace!(%region, start, end, "get_module_range");
+        for region in &module_regions {
+            tracing::trace!(%region, %start, %end, "get_module_range processing region");
         }
 
         Ok((start..end).into())
