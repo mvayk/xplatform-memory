@@ -3,7 +3,7 @@ use std::io;
 use xpmemtool::{core::Xpmentool, process::Process, types::Address};
 
 pub fn main() -> io::Result<()> {
-    Xpmentool::init();
+    Xpmentool::init(true);
 
     let process_name = "openttd.exe";
     let process = Process::new(process_name)?;

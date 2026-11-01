@@ -10,14 +10,24 @@ use std::sync::OnceLock;
 
 static INITIALIZED: OnceLock<()> = OnceLock::new();
 
-pub struct Xpmentool {}
+pub struct Xpmentool {
+    log: bool,
+}
 
 impl Xpmentool {
-    pub fn init() {
-        INITIALIZED.get_or_init(formatter::init);
+    pub fn init(log: bool) -> Self {
+        if log {
+            INITIALIZED.get_or_init(formatter::init);
+        }
+
+        Xpmentool { log }
     }
 
     pub fn is_initialized() -> bool {
-        INITIALIZED.get().is_some()
+        if INITIALIZED.get().is_some() {
+            return true;
+        } else {
+            return false;
+        }
     }
 }

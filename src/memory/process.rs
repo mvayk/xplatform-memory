@@ -16,10 +16,6 @@ pub struct Process {
 
 impl Process {
     pub fn new(name: &str) -> io::Result<Self> {
-        assert!(
-            Xpmentool::is_initialized(),
-            "Xpmentool::init() must be called before using Memory"
-        );
         let pid = platform::ProcessPlatform::find_pid(name)?;
         let inner = platform::ProcessPlatform::new(pid)?;
         Ok(Process { pid, inner })
@@ -70,6 +66,6 @@ impl Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        tracing::info!("xplatform-memory exited");
+        tracing::info!(self.pid, "dropped");
     }
 }

@@ -11,7 +11,7 @@ use xpmemtool::{
     types::Module,
 };
 fn main() -> io::Result<()> {
-    core::Xpmentool::init();
+    core::Xpmentool::init(true);
 
     let sober = Process::new("Main")?;
     is_really_sober(&sober)?;
@@ -29,7 +29,6 @@ fn main() -> io::Result<()> {
 
     for module in modules {
         let name = module.name;
-        println!("{name}");
         xpmemtool::log!(m = format_args!("{name}"));
     }
 

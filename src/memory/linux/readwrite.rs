@@ -70,7 +70,7 @@ impl ProcessPlatform {
             Err(e) => {
                 tracing::error!(addr = format_args!("{address:?}"), error = %e, "read_memory encountered an error on addr:");
                 return Err(Error::new(
-                    io::ErrorKind::Interrupted,
+                    io::ErrorKind::InvalidInput,
                     "read_memory failed to read",
                 ));
             }

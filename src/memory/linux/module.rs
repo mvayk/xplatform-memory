@@ -93,7 +93,10 @@ impl ProcessPlatform {
                 %name,
                 "get_module_regions failed to find module regions"
             );
-            return Err(io::Error::new(io::ErrorKind::NotFound, format!("module {} not found", name)));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("module {} not found", name),
+            ));
         }
 
         Ok(regions)

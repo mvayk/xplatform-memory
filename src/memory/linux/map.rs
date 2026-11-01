@@ -68,6 +68,7 @@ impl MapEntry {
         self.addresses.contains(address)
     }
 
+    /* TODO: finish */
     pub fn get_pages(&self) -> Option<Page> {
         let step = page_size();
 
@@ -88,7 +89,6 @@ impl MapEntry {
         );
 
         let page = self.addresses.step_by(step as usize);
-        println!("{:?}, {} ", page, step);
 
         // Some(Page {
         //     addresses: AddyRange {

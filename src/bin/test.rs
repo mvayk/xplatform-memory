@@ -12,7 +12,7 @@ use xpmemtool::{
 };
 
 fn main() -> io::Result<()> {
-    core::Xpmentool::init();
+    Xpmentool::init(true);
 
     let process_name = "openttd.exe";
     let process = Process::new(process_name)?;
