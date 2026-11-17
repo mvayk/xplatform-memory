@@ -6,7 +6,7 @@
 */
 
 use crate::formatter;
-use std::sync::OnceLock;
+use std::{io, path::PathBuf, sync::OnceLock};
 
 static INITIALIZED: OnceLock<()> = OnceLock::new();
 
@@ -21,6 +21,12 @@ impl Xpmentool {
         }
 
         Xpmentool { log }
+    }
+
+    pub fn get_dll_path() -> io::Result<PathBuf> {
+        let path_str = "./xpmemtool.dll";
+        let dll_path = std::path::PathBuf::from(path_str);
+        Ok(dll_path)
     }
 
     pub fn is_initialized() -> bool {

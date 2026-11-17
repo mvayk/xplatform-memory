@@ -31,9 +31,16 @@ path = "src/bin/faketime.rs"
 name = "carflipper"
 path = "src/bin/carflipper.rs"
 
+[[bin]]
+name = "css"
+path = "src/bin/css.rs"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 nix = { version = "0.31.2", features = ["process", "ptrace"] }
+
+[lib]
+crate-type = ["lib", "cdylib"]
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
