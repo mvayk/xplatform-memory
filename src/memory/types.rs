@@ -1,8 +1,18 @@
 use crate::memory::process::Process;
 use std::ops::Range;
 
+#[cfg(target_os = "linux")]
 pub struct Module<'a> {
     pub name: String,
+    pub process: &'a Process,
+    pub address: AddyRange,
+}
+
+#[cfg(target_os = "windows")]
+use winapi::shared::minwindef::HMODULE;
+pub struct Module<'a> {
+    pub name: String,
+    pub handle: HMODULE,
     pub process: &'a Process,
     pub address: AddyRange,
 }

@@ -4,7 +4,7 @@ use crate::types::{Address, Module, ProtectionType};
 use std::io::{self};
 
 #[cfg(target_os = "windows")]
-use crate::memory::windows::memory::platform;
+use crate::memory::windows::platform;
 
 #[cfg(target_os = "linux")]
 use crate::memory::linux::platform;
@@ -24,8 +24,18 @@ impl Process {
     pub fn get_module(&self, module_name: &str) -> io::Result<Module<'_>> {
         let module_platform = self.inner.get_module(module_name)?;
 
+        /* EW */
+        #[cfg(target_os = "linux")]
         Ok(Module {
             name: module_platform.name.to_string(),
+            process: self,
+            address: module_platform.addresses,
+        });
+
+        #[cfg(target_os = "windows")]
+        Ok(Module {
+            name: module_platform.name.to_string(),
+            handle: module_platform.handle,
             process: self,
             address: module_platform.addresses,
         })
@@ -51,16 +61,11 @@ impl Process {
         length: usize,
         protection: ProtectionType,
     ) -> io::Result<()> {
-        self.inner
-            .protect_memory(addresses, length as u64, protection)
+        self.inner.protect_memory(addresses, length, protection)
     }
 
     pub fn allocate_memory(&self) -> io::Result<Address> {
-        self.inner.allocate_memory()
-    }
-
-    pub fn get_memory_protection(&self, address: Address) -> io::Result<ProtectionType> {
-        self.inner.query_address_protection(address)
+        self.inner.allocate_memory() /* allocates a page */
     }
 }
 

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::io;
-use xpmemtool::{core::Xpmentool, process::Process, types::Address};
+use xpmemtool::{core::Xpmentool, process::Process};
 
 pub fn main() -> io::Result<()> {
     Xpmentool::init(true);
@@ -26,6 +26,7 @@ pub fn main() -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 fn openttd_linux_long(process: &Process) -> io::Result<()> {
     let module_base = process.get_module_base("openttd.exe")?;
     let level1 = process

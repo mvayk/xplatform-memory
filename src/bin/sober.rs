@@ -1,4 +1,6 @@
-#[cfg(target_os = "linux")]
+#[cfg(not(target_os = "linux"))]
+compile_error!("this binary only supports Linux");
+
 use std::{
     fs,
     io::{self, Error},

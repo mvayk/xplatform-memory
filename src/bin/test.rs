@@ -1,4 +1,7 @@
 #![allow(unused)]
+#[cfg(not(target_os = "linux"))]
+compile_error!("this binary only supports Linux");
+
 use std::io;
 
 use tracing::warn;

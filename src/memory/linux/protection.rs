@@ -40,7 +40,7 @@ impl ProcessPlatform {
     pub fn protect_memory(
         &self,
         addresses: &[Address],
-        length: u64,
+        length: usize,
         protection: ProtectionType,
     ) -> io::Result<()> {
         let prot = match_protection(protection) as u64;

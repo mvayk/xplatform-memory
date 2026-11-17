@@ -1,4 +1,4 @@
-#[cfg(target_os = "linux")]
+#![cfg(target_os = "linux")]
 use crate::linux::seccomp::{SeccompMode, seccomp_check};
 use std::{fs, io};
 
