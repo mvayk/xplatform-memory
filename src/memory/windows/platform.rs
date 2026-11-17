@@ -10,6 +10,8 @@ use winapi::{
     },
 };
 
+use crate::formatter::Hex;
+
 #[derive(Clone)]
 pub struct ProcessPlatform {
     pub pid: i32,
@@ -19,6 +21,7 @@ pub struct ProcessPlatform {
 impl ProcessPlatform {
     pub fn new(pid: i32) -> io::Result<Self> {
         let handle = unsafe { OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid as DWORD) };
+        tracing::info!(pid = pid, handle = %Hex(handle as u64), "found handle for pid:");
         if handle.is_null() {
             return Err(io::Error::last_os_error());
         }

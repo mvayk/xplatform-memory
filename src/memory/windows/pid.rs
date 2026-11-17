@@ -22,12 +22,14 @@ impl ProcessPlatform {
                 &mut bytes_returned,
             ) == FALSE
             {
+                tracing::error!("failed to enumerate processes");
                 return Err(io::Error::last_os_error());
             }
             let count = bytes_returned as usize / mem::size_of::<DWORD>();
             for &pid in &pids[..count] {
                 let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
                 if handle.is_null() {
+                    tracing::trace!("encountered null handle, continuing");
                     continue;
                 }
                 let mut module: HMODULE = std::ptr::null_mut();
@@ -50,6 +52,7 @@ impl ProcessPlatform {
                         .to_string_lossy()
                         .to_string();
                     if basename == name.to_lowercase() {
+                        tracing::info!(pid = pid, "found pid");
                         CloseHandle(handle);
                         return Ok(pid as i32);
                     }
@@ -57,6 +60,7 @@ impl ProcessPlatform {
                 CloseHandle(handle);
             }
         }
+        tracing::error!("failed to find process");
         Err(io::Error::new(
             io::ErrorKind::NotFound,
             "Failed to find process",

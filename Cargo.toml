@@ -27,6 +27,10 @@ path = "src/bin/sober.rs"
 name = "faketime"
 path = "src/bin/faketime.rs"
 
+[[bin]]
+name = "carflipper"
+path = "src/bin/carflipper.rs"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 nix = { version = "0.31.2", features = ["process", "ptrace"] }

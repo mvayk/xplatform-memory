@@ -1,6 +1,7 @@
-use std::{ffi::c_void, io};
+use std::io;
 
 use winapi::{
+    ctypes::c_void,
     shared::minwindef::DWORD,
     um::{
         memoryapi::VirtualProtectEx,
@@ -35,10 +36,11 @@ impl ProcessPlatform {
         protection: ProtectionType,
     ) -> io::Result<()> {
         /* match protection type from our enum to winapi */
+        let address = address[0] as *mut c_void;
         let addr = unsafe {
             VirtualProtectEx(
                 self.handle,
-                std::ptr::null_mut(),
+                address,
                 size,
                 MEM_COMMIT | MEM_RESERVE,
                 match_protection(protection) as *mut u32,

@@ -9,6 +9,7 @@ use winapi::um::psapi::EnumProcessModules;
 use winapi::um::psapi::GetModuleFileNameExA;
 use winapi::um::psapi::{GetModuleInformation, MODULEINFO};
 
+use crate::formatter::Hex;
 use crate::types::Address;
 use crate::types::AddyRange;
 use crate::windows::platform::ProcessPlatform;
@@ -38,9 +39,15 @@ impl ProcessPlatform {
                 mem::size_of::<MODULEINFO>() as DWORD,
             ) == 0
             {
+                tracing::error!("failed to get module range, failed to find hmodule handle");
                 return Err(io::Error::last_os_error());
             }
 
+            tracing::info!(
+                base = %Hex(info.lpBaseOfDll as u64),
+                size = info.SizeOfImage,
+                "module range found"
+            );
             Ok(AddyRange::from_len(
                 info.lpBaseOfDll as Address,
                 info.SizeOfImage as u64,
@@ -60,6 +67,7 @@ impl ProcessPlatform {
                 &mut cb_needed,
             ) == FALSE
             {
+                tracing::error!("failed to get module");
                 return Err(io::Error::last_os_error());
             }
 
@@ -75,6 +83,7 @@ impl ProcessPlatform {
                     MAX_PATH as DWORD,
                 );
                 if len == 0 {
+                    tracing::trace!("skipping module filename, continuing");
                     continue;
                 }
 
@@ -87,15 +96,24 @@ impl ProcessPlatform {
                     .to_string_lossy();
 
                 if base_name == wanted.as_str() {
-                    return Ok(ModuleP {
+                    let modulep = ModuleP {
                         name: module.to_string(),
                         handle: hmodule,
                         process: self,
                         addresses: self.get_module_range(hmodule)?,
-                    });
+                    };
+                    tracing::info!(
+                        module_name = modulep.name,
+                        base = %Hex(modulep.addresses.start),
+                        pid = self.pid,
+                        "get_module successful"
+                    );
+
+                    return Ok(modulep);
                 }
             }
         }
+        tracing::error!("failed to find module");
         Err(io::Error::new(
             io::ErrorKind::NotFound,
             "Failed to find module",
