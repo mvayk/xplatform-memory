@@ -1,4 +1,5 @@
 pub mod allocation;
+pub mod load;
 pub mod map;
 pub mod module;
 pub mod page;

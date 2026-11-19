@@ -16,6 +16,7 @@ pub fn match_protection(p: ProtectionType) -> i32 {
         PAGE_EXECUTE_READWRITE => PROT_READ | PROT_WRITE | PROT_EXEC,
         PAGE_READONLY => PROT_READ,
         PAGE_READWRITE => PROT_READ | PROT_WRITE,
+        UNKNOWN => 0,
     }
 }
 
@@ -27,6 +28,7 @@ pub fn protection_to_string<'a>(protection: ProtectionType) -> &'a str {
         PAGE_EXECUTE_READWRITE => "PAGE_EXECUTE_READWRITE",
         PAGE_READONLY => "PAGE_READONLY",
         PAGE_READWRITE => "PAGE_READWRITE",
+        UNKNOWN => "UNKNOWN",
         //_ => { return Err(io::Error::new( io::ErrorKind::InvalidInput, "failed to convert protectiontype to string: unknown flag provided",)); }
     }
 }
@@ -51,7 +53,7 @@ impl ProcessPlatform {
             let new_regs = InputRegisters {
                 rax: libc::SYS_mprotect as u64,
                 rdi: address,
-                rsi: length,
+                rsi: length as u64,
                 rdx: prot,
                 r10: 0,
                 r9: 0,

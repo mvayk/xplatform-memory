@@ -1,7 +1,6 @@
-use libc::seccomp_data;
-
 use crate::linux::platform::ProcessPlatform;
 use crate::types::Address;
+use bytemuck::Pod;
 use std::io::Error;
 use std::os::unix::fs::FileExt;
 use std::{fmt, fs, io, mem};
@@ -52,17 +51,15 @@ fn process_addresses(process: &ProcessPlatform, addresses: &[Address]) -> io::Re
 */
 
 impl ProcessPlatform {
-    pub fn read_memory(&self, addy: Address) -> io::Result<u64> {
-        let addresses: Vec<Address> = process_addresses(self, &[addy])?;
+    pub fn read_memory<T: Pod>(&self, addy: Address) -> io::Result<T> {
+        let address = process_addresses(self, &[addy])?[0];
         let mem_file = fs::File::open(format!("/proc/{}/mem", self.pid))?;
 
-        let address = addresses[0];
-
-        let mut word = [0u8; 8];
-        match mem_file.read_exact_at(&mut word, address) {
+        let mut value = T::zeroed();
+        match mem_file.read_exact_at(bytemuck::bytes_of_mut(&mut value), address) {
             Ok(_) => {
                 tracing::info!(
-                    read = format_args!("{word:#x?}"),
+                    read = format_args!("{:#x?}", bytemuck::bytes_of(&value)),
                     addr = format_args!("{address:?}"),
                     "read_memory successful:"
                 );
@@ -76,7 +73,7 @@ impl ProcessPlatform {
             }
         }
 
-        Ok(u64::from_le_bytes(word))
+        Ok(value)
     }
 
     pub fn write_memory<T: Copy>(&self, addy: Address, data: &T) -> io::Result<()> {

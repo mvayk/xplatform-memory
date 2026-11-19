@@ -16,11 +16,11 @@ pub fn main() -> io::Result<()> {
         (final)b + 0x90
     */
 
-    let level1 = process.read_memory((module_base) + 0xF97380)?;
-    let level2 = process.read_memory(level1)?;
+    let level1 = process.read_memory::<u64>((module_base) + 0xF97380)?;
+    let level2 = process.read_memory::<u64>(level1)?;
     let money_addy = level2 + 0x90;
 
-    process.read_memory(money_addy)?;
+    process.read_memory::<u64>(money_addy)?;
     process.write_memory(money_addy, &12000000u64)?;
 
     Ok(())

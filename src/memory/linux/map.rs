@@ -6,13 +6,14 @@ use crate::process::Process;
 use crate::types::{Address, AddyRange, ProtectionType, address_align_to_page_down};
 use std::{fmt, fs, io};
 
-const SPECIAL_REGIONS: [&str; 6] = [
+const SPECIAL_REGIONS: [&str; 7] = [
     "[vvar]",
     "[vvar_vclock]",
     "[vdso]",
     "[vsyscall]",
     "[heap]",
     "[stack]",
+    "/dev/nvidia0",
 ];
 
 /* aka Region */
@@ -189,8 +190,9 @@ fn parse_permissions(perms: &str, line: &str) -> io::Result<(ProtectionType, boo
         b"--x" => ProtectionType::PAGE_EXECUTE,
         b"r-x" => ProtectionType::PAGE_EXECUTE_READ,
         b"rwx" => ProtectionType::PAGE_EXECUTE_READWRITE,
+        b"-w-" => ProtectionType::UNKNOWN,
         _ => {
-            tracing::error!(
+            tracing::warn!(
                 permission = perms,
                 "parse_permissions failed to determine protection flags"
             );

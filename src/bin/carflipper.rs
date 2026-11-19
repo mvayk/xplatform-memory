@@ -63,20 +63,20 @@ fn main() -> io::Result<()> {
     log!(PhoneState = %Hex(phone_state), "PhoneState:");
 
     let cash = phone_state + Definitions::Cash;
-    let cash_value = process.read_memory(phone_state + Definitions::Cash)?;
+    let cash_value = process.read_memory::<u64>(phone_state + Definitions::Cash)?;
     log!(
         cash_value = format_args!("{}", cash_value as i32),
         "cash value:"
     );
     let _ = process.write_memory(cash, i32::MAX / 2)?;
-    let cash_value = process.read_memory(phone_state + Definitions::Cash)?;
+    let cash_value = process.read_memory::<u64>(phone_state + Definitions::Cash)?;
     log!(
         cash_value = format_args!("{}", cash_value as i32),
         "new cash value:"
     );
 
     let xp = phone_state + Definitions::Xp;
-    let xp_value = process.read_memory(phone_state + Definitions::Xp)?;
+    let xp_value = process.read_memory::<u64>(phone_state + Definitions::Xp)?;
     log!(xp_value = format_args!("{}", xp_value as i32), "xp value:");
 
     let _ = process.write_memory(xp, i32::MAX)?;

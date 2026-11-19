@@ -1,5 +1,9 @@
-use crate::core::Xpmentool;
-use crate::types::{Address, Module, ProtectionType};
+use bytemuck::Pod;
+
+use crate::{
+    formatter::Hex,
+    types::{Address, Module, ProtectionType},
+};
 
 use std::io::{self};
 
@@ -26,28 +30,34 @@ impl Process {
 
         /* EW */
         #[cfg(target_os = "linux")]
-        Ok(Module {
+        return Ok(Module {
             name: module_platform.name.to_string(),
             process: self,
             address: module_platform.addresses,
         });
 
         #[cfg(target_os = "windows")]
-        Ok(Module {
+        return Ok(Module {
             name: module_platform.name.to_string(),
             handle: module_platform.handle,
             process: self,
             address: module_platform.addresses,
-        })
+        });
     }
 
     pub fn get_module_base(&self, module_name: &str) -> io::Result<Address> {
         let module_platform = self.inner.get_module(module_name)?;
-        Ok(module_platform.addresses.start)
+        let base = module_platform.addresses.start;
+        //tracing::info!(%Hex(base), "found base");
+        tracing::info!(
+            base = format_args!("{}, {:#x}", module_name, base),
+            "found base:"
+        );
+        Ok(base)
     }
 
-    pub fn read_memory(&self, address: Address) -> io::Result<u64> {
-        self.inner.read_memory(address)
+    pub fn read_memory<T: Pod>(&self, address: Address) -> io::Result<T> {
+        self.inner.read_memory::<T>(address)
     }
 
     pub fn write_memory<T: Copy>(&self, address: Address, data: T) -> io::Result<()> {

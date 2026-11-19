@@ -9,10 +9,9 @@ pub struct Module<'a> {
 }
 
 #[cfg(target_os = "windows")]
-use winapi::shared::minwindef::HMODULE;
 pub struct Module<'a> {
     pub name: String,
-    pub handle: HMODULE,
+    pub handle: winapi::shared::minwindef::HMODULE,
     pub process: &'a Process,
     pub address: AddyRange,
 }
@@ -26,6 +25,7 @@ pub enum ProtectionType {
     PAGE_NOACCESS,          /* PROT_NONE  */
     PAGE_READONLY,          /* PROT_READ */
     PAGE_READWRITE,         /* PROT_READWRITE */
+    UNKNOWN,                /* -w-s */
 }
 
 pub type Address = u64;
