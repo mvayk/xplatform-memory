@@ -25,7 +25,11 @@ pub fn get_bitness(pida: i32) -> io::Result<Bitness> {
 
     match header[4] {
         1 => {
-            tracing::info!(bitness = "x32", pid = pida);
+            tracing::warn!(
+                bitness = "x32",
+                pid = pida,
+                "xpmemtool was not designed to handle x32bit processes"
+            );
             Ok(Bitness::x32)
         }
         2 => {

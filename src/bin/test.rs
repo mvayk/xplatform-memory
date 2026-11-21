@@ -17,7 +17,7 @@ use xpmemtool::{
 fn main() -> io::Result<()> {
     Xpmentool::init(true);
 
-    let process_name = "hl2_linux";
+    let process_name = "gmod.exe";
     let mut process = Process::new(process_name)?;
 
     process.inner.load("css_entry".to_string());

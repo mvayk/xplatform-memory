@@ -90,37 +90,39 @@ impl ProcessPlatform {
         self.read_memory_long(&[alloc_path], path.len())?;
 
         tracing::debug!("creating injector instance directly");
-        let mut injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
+        {
+            let mut injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
 
-        let new_regs = InputRegisters {
-            rdi: alloc_path,
-            rsi: libc::RTLD_LAZY as u64,
-            r9: dl_open_addr,
-            rip: injector.saved_regs.rip,
-            ..Default::default()
-        };
+            let new_regs = InputRegisters {
+                rdi: alloc_path,
+                rsi: libc::RTLD_LAZY as u64,
+                r9: dl_open_addr,
+                rip: injector.saved_regs.rip,
+                ..Default::default()
+            };
 
-        tracing::debug!("attempting to call calling dl_open");
-        match injector.call(new_regs, true) {
-            Ok(ret) if ret < 0 => {
-                tracing::error!(ret, "load failed");
-                return Err(Error::new(io::ErrorKind::NotFound, "something went wrong"));
-            }
-            Ok(ptr) => {
-                tracing::info!(
-                    memory_address = format_args!("{ptr:#x}"),
-                    "load received success"
-                );
-                ptr
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "syscall failed");
-                return Err(Error::new(
-                    io::ErrorKind::NotFound,
-                    "something went horrifically wrong",
-                ));
-            }
-        };
+            tracing::debug!("attempting to call calling dl_open");
+            match injector.call(new_regs, true) {
+                Ok(ret) if ret < 0 => {
+                    tracing::error!(ret, "load failed");
+                    return Err(Error::new(io::ErrorKind::NotFound, "something went wrong"));
+                }
+                Ok(ptr) => {
+                    tracing::info!(
+                        memory_address = format_args!("{ptr:#x}"),
+                        "load received success"
+                    );
+                    ptr
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "syscall failed");
+                    return Err(Error::new(
+                        io::ErrorKind::NotFound,
+                        "something went horrifically wrong",
+                    ));
+                }
+            };
+        }
 
         /* just so maps has time to refresh */
         /* i think accessing /mem while ptrace attached causes it to crash? */
@@ -135,10 +137,10 @@ impl ProcessPlatform {
             ));
         };
 
-        tracing::debug!("updating injector instance");
-        injector.update()?;
-        tracing::info!(post_update_rip = %Hex(injector.saved_regs.rip), "after update");
-        //let injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
+        let injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
+        // tracing::debug!("updating injector instance");
+        // injector.update()?;
+        // tracing::info!(post_update_rip = %Hex(injector.saved_regs.rip), "after update");
 
         let new_regs = InputRegisters {
             r9: entry_addr,
