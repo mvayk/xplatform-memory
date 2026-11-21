@@ -78,7 +78,7 @@ pub fn maps_loaded(p: &ProcessPlatform, lib: &str, timeout: std::time::Duration)
                 format!("{lib} did not appear (or was empty) in target process within {timeout:?}"),
             ));
         }
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        //std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
 

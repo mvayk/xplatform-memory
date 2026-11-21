@@ -44,4 +44,33 @@ impl ProcessPlatform {
             }
         }
     }
+
+    pub fn free_memory(&self, start_address: Address) -> io::Result<Address> {
+        let injector = ASMInjector::new(Pid::from_raw(self.pid), false)?;
+
+        let new_regs = InputRegisters {
+            rax: libc::SYS_munmap as u64,
+            rdi: start_address,
+            rsi: 0x1000, /* in bytes */
+            ..Default::default()
+        };
+
+        match injector.call(new_regs, false) {
+            Ok(ret) if ret < 0 => {
+                tracing::error!(ret, "free_memory failed");
+                Err(io::Error::from_raw_os_error(-ret as i32))
+            }
+            Ok(ptr) => {
+                tracing::info!(
+                    memory_address = format_args!("{ptr:#x}"),
+                    "free_memory received success"
+                );
+                Ok(ptr as Address)
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "syscall failed");
+                Err(e)
+            }
+        }
+    }
 }

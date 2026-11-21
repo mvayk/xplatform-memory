@@ -91,7 +91,7 @@ impl ProcessPlatform {
 
         tracing::debug!("creating injector instance directly");
         {
-            let mut injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
+            let injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
 
             let new_regs = InputRegisters {
                 rdi: alloc_path,
@@ -137,68 +137,73 @@ impl ProcessPlatform {
             ));
         };
 
-        let injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
-        // tracing::debug!("updating injector instance");
-        // injector.update()?;
-        // tracing::info!(post_update_rip = %Hex(injector.saved_regs.rip), "after update");
+        {
+            let injector = ASMInjector::new(Pid::from_raw(self.pid), true)?;
+            // tracing::debug!("updating injector instance");
+            // injector.update()?;
+            // tracing::info!(post_update_rip = %Hex(injector.saved_regs.rip), "after update");
 
-        let new_regs = InputRegisters {
-            r9: entry_addr,
-            ..Default::default()
-        };
+            let new_regs = InputRegisters {
+                r9: entry_addr,
+                ..Default::default()
+            };
 
-        tracing::debug!("attempting to call entry of so");
-        match injector.call(new_regs, true) {
-            Ok(ret) if ret < 0 => {
-                tracing::error!(ret, "load failed");
-                return Err(Error::new(io::ErrorKind::NotFound, "something went wrong"));
-            }
-            Ok(ptr) => {
-                tracing::info!(
-                    memory_address = format_args!("{ptr:#x}"),
-                    "load received success"
-                );
-                ptr
-            }
-            Err(e) => {
-                let crash_signal = e
-                    .get_ref()
-                    .and_then(|inner| inner.downcast_ref::<UnexpectedWaitStatus>())
-                    .and_then(|uws| match uws.status {
-                        WaitStatus::Stopped(_, sig) => Some(sig),
-                        _ => None,
-                    });
+            tracing::debug!("attempting to call entry of so");
+            match injector.call(new_regs, true) {
+                Ok(ret) if ret < 0 => {
+                    tracing::error!(ret, "load failed");
+                    return Err(Error::new(io::ErrorKind::NotFound, "something went wrong"));
+                }
+                Ok(ptr) => {
+                    tracing::info!(
+                        memory_address = format_args!("{ptr:#x}"),
+                        "load received success"
+                    );
+                    ptr
+                }
+                Err(e) => {
+                    let crash_signal = e
+                        .get_ref()
+                        .and_then(|inner| inner.downcast_ref::<UnexpectedWaitStatus>())
+                        .and_then(|uws| match uws.status {
+                            WaitStatus::Stopped(_, sig) => Some(sig),
+                            _ => None,
+                        });
 
-                match crash_signal {
-                    Some(Signal::SIGABRT) => {
-                        tracing::error!(
-                            "entry point aborted (SIGABRT) — function called std::process::abort or a panic/assert fired"
-                        );
-                        return Err(Error::new(io::ErrorKind::Other, "entry point aborted"));
-                    }
-                    Some(Signal::SIGSEGV) => {
-                        tracing::error!(
-                            "entry point segfaulted (SIGSEGV) — bad pointer or invalid jump"
-                        );
-                        return Err(Error::new(io::ErrorKind::Other, "entry point segfaulted"));
-                    }
-                    Some(other_sig) => {
-                        tracing::error!(?other_sig, "entry point hit unexpected signal");
-                        return Err(Error::new(
-                            io::ErrorKind::Other,
-                            "entry point hit unexpected signal",
-                        ));
-                    }
-                    None => {
-                        tracing::error!(error = %e, "syscall failed");
-                        return Err(Error::new(
-                            io::ErrorKind::NotFound,
-                            "something went horrifically wrong2 ",
-                        ));
+                    match crash_signal {
+                        Some(Signal::SIGABRT) => {
+                            tracing::error!(
+                                "entry point aborted (SIGABRT) — function called std::process::abort or a panic/assert fired"
+                            );
+                            return Err(Error::new(io::ErrorKind::Other, "entry point aborted"));
+                        }
+                        Some(Signal::SIGSEGV) => {
+                            tracing::error!(
+                                "entry point segfaulted (SIGSEGV) — bad pointer or invalid jump"
+                            );
+                            return Err(Error::new(io::ErrorKind::Other, "entry point segfaulted"));
+                        }
+                        Some(other_sig) => {
+                            tracing::error!(?other_sig, "entry point hit unexpected signal");
+                            return Err(Error::new(
+                                io::ErrorKind::Other,
+                                "entry point hit unexpected signal",
+                            ));
+                        }
+                        None => {
+                            tracing::error!(error = %e, "syscall failed");
+                            return Err(Error::new(
+                                io::ErrorKind::NotFound,
+                                "something went horrifically wrong2 ",
+                            ));
+                        }
                     }
                 }
-            }
-        };
+            };
+        }
+
+        /* garbage */
+        self.free_memory(alloc_path)?;
 
         Ok(())
     }
