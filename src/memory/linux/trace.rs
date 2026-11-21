@@ -1,13 +1,26 @@
 use libc::user_regs_struct;
 use nix::sys::ptrace;
-use nix::sys::signal::Signal::SIGTRAP;
+use nix::sys::signal::Signal::{self, SIGTRAP};
 use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::Pid;
+use std::cell::Cell;
 use std::io;
+
+#[derive(Debug)]
+pub struct UnexpectedWaitStatus {
+    pub status: WaitStatus,
+}
+
+impl std::fmt::Display for UnexpectedWaitStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unexpected wait status: {:?}", self.status)
+    }
+}
+
+impl std::error::Error for UnexpectedWaitStatus {}
 
 #[derive(Default)]
 pub struct InputRegisters {
-    pub rip: u64,
     pub rax: u64,
     pub rdi: u64,
     pub rsi: u64,
@@ -15,12 +28,22 @@ pub struct InputRegisters {
     pub r10: u64,
     pub r9: u64,
     pub r8: u64,
+    pub rsp: u64,
+    pub rip: u64,
 }
 
 impl InputRegisters {
-    pub fn to_libc_user_regs(&self, saved_regs: libc::user_regs_struct) -> libc::user_regs_struct {
+    pub fn to_libc_user_regs(
+        &self,
+        saved_regs: libc::user_regs_struct,
+        remote: bool,
+    ) -> libc::user_regs_struct {
         let mut regs = saved_regs;
 
+        if remote {
+            regs.rsp = self.rsp;
+            regs.rip = self.rip;
+        }
         regs.rax = self.rax;
         regs.orig_rax = u64::MAX;
         regs.rdi = self.rdi;
@@ -36,13 +59,17 @@ impl InputRegisters {
 
 pub struct PtraceGuard {
     pid: Pid,
+    pending_signal: Cell<Option<Signal>>,
 }
 
 impl PtraceGuard {
     pub fn attach(pid: Pid) -> io::Result<Self> {
         ptrace::attach(pid)
             .inspect_err(|e| tracing::error!(error = %e, "ptrace failed to attach in guard"))?;
-        let guard = Self { pid };
+        let guard = Self {
+            pid,
+            pending_signal: Cell::new(None),
+        };
         match waitpid(pid, None).map_err(io::Error::from)? {
             WaitStatus::Stopped(..) => {
                 tracing::info!(pid = pid.as_raw(), "ptrace attached");
@@ -56,71 +83,172 @@ impl PtraceGuard {
             }
         }
     }
+
+    pub fn defer_signal(&self, sig: Signal) {
+        self.pending_signal.set(Some(sig));
+    }
 }
 
 impl Drop for PtraceGuard {
     fn drop(&mut self) {
-        let _ = ptrace::detach(self.pid, None);
-        tracing::info!(pid = self.pid.as_raw(), "ptrace detached");
+        let sig = self.pending_signal.get();
+        let _ = ptrace::detach(self.pid, sig);
+        tracing::info!(pid = self.pid.as_raw(), ?sig, "ptrace detached");
     }
 }
 
 #[cfg(target_arch = "x86_64")]
-pub struct SyscallInjector {
+pub struct ASMInjector {
     guard: PtraceGuard,
-    saved_regs: user_regs_struct,
+    pub saved_regs: user_regs_struct,
     saved_word: i64,
+    pid: Pid,
+    remote: bool,
 }
 
 #[cfg(target_arch = "x86_64")]
-impl SyscallInjector {
+impl ASMInjector {
     const STUB: [u8; 3] = [0x0f, 0x05, 0xcc]; /* syscall; int3 */
+    const REMOTE_FUNC_STUB: [u8; 8] = [0x41, 0xff, 0xd1, 0xcc, 0x00, 0x00, 0x00, 0x00];
 
-    pub fn new(pid: Pid) -> io::Result<Self> {
+    pub fn new(pid: Pid, remote: bool) -> io::Result<Self> {
         let guard = PtraceGuard::attach(pid)?;
         let saved_regs = ptrace::getregs(pid).inspect_err(
-            |e| tracing::error!(error = %e, "SyscallInjector::new failed to save registers"),
+            |e| tracing::error!(error = %e, "ASMInjector::new failed to save registers"),
         )?;
         let rip = saved_regs.rip as *mut _;
-        let saved_word = ptrace::read(pid, rip).inspect_err(|e| tracing::error!(error = %e, "SyscallInjector::new failed to read saved instruction pointer"))?;
+        let saved_word = ptrace::read(pid, rip).inspect_err(|e| tracing::error!(error = %e, "ASMInjector::new failed to read saved instruction pointer"))?;
 
         let mut patched = saved_word.to_le_bytes();
-        patched[..3].copy_from_slice(&Self::STUB);
-        ptrace::write(pid, rip, i64::from_le_bytes(patched)).inspect_err(|e| tracing::error!(error = %e, "SyscallInjector::new failed to write patch to instruction pointer"))?;
+        if remote {
+            patched[..8].copy_from_slice(&Self::REMOTE_FUNC_STUB);
+        } else {
+            patched[..3].copy_from_slice(&Self::STUB);
+        }
+        ptrace::write(pid, rip, i64::from_le_bytes(patched)).inspect_err(|e| tracing::error!(error = %e, "ASMInjector::new failed to write patch to instruction pointer"))?;
 
         tracing::info!(
             pid = pid.as_raw(),
             rip = format_args!("{:#x}", saved_regs.rip),
-            "syscall stub patched in"
+            "stub patched in"
         );
 
         Ok(Self {
             guard,
             saved_regs,
             saved_word,
+            pid,
+            remote,
         })
     }
 
+    /* call between uses */
+    /* duplicate code yucm,yyy */
+    pub fn update(&mut self) -> io::Result<()> {
+        ptrace::write(self.pid, self.saved_regs.rip as *mut _, self.saved_word).inspect_err(
+            |e| tracing::error!(error = %e, "ASMInjector::update failed to restore previous patch"),
+        )?;
+
+        let pid = self.pid;
+        let remote = self.remote;
+        let saved_regs = ptrace::getregs(pid).inspect_err(
+            |e| tracing::error!(error = %e, "ASMInjector::update failed to save registers"),
+        )?;
+        let rip = saved_regs.rip as *mut _;
+        let saved_word = ptrace::read(pid, rip).inspect_err(
+            |e| tracing::error!(error = %e, "ASMInjector::update failed to read saved instruction"),
+        )?;
+
+        let mut patched = saved_word.to_le_bytes();
+        if remote {
+            patched[..8].copy_from_slice(&Self::REMOTE_FUNC_STUB);
+        } else {
+            patched[..3].copy_from_slice(&Self::STUB);
+        }
+        ptrace::write(pid, rip, i64::from_le_bytes(patched)).inspect_err(
+            |e| tracing::error!(error = %e, "ASMInjector::update failed to write new patch"),
+        )?;
+
+        self.saved_regs = saved_regs;
+        self.saved_word = saved_word;
+        Ok(())
+    }
+
     // pub fn syscall(&self, nr: i64, args: [u64; 6]) -> io::Result<i64> {
-    pub fn syscall(&self, new_regs: InputRegisters) -> io::Result<i64> {
+    pub fn call(&self, mut new_regs: InputRegisters, remote: bool) -> io::Result<i64> {
+        use crate::formatter::Hex;
+
         let pid = self.guard.pid;
         let saved_regs = self.saved_regs;
-        let regs = new_regs.to_libc_user_regs(saved_regs);
+        if remote {
+            new_regs.rsp = saved_regs.rsp - 0x400 & !0xf;
+            new_regs.rip = saved_regs.rip;
+        }
+        let regs = new_regs.to_libc_user_regs(saved_regs, remote);
+
+        tracing::info!(
+            new_regs_rip = %Hex(new_regs.rip),
+            new_regs_r9 = %Hex(new_regs.r9),
+            final_rip = %Hex(regs.rip),
+            final_r9 = %Hex(regs.r9),
+        );
 
         ptrace::setregs(pid, regs)
             .inspect_err(|e| tracing::error!(error = %e, "syscall failed to set registers"))?;
-        ptrace::cont(pid, None)
-            .inspect_err(|e| tracing::error!(error = %e, "syscall failed to continue process"))?;
-        match waitpid(pid, None)? {
-            WaitStatus::Stopped(_, SIGTRAP) => {
-                tracing::debug!(pid = format_args!("{pid}"), "syscall waiting for")
-            }
-            other => {
-                tracing::error!(pid = pid.as_raw(), regs.rax, status = ?other, "unexpected wait status during syscall");
-                //self.fake_drop(true, false);
-                return Err(io::Error::other(format!(
-                    "unexpected wait status: {other:?}"
-                )));
+
+        let trap_addr = self.saved_regs.rip + 4;
+
+        loop {
+            ptrace::cont(pid, None).inspect_err(
+                |e| tracing::error!(error = %e, "syscall failed to continue process"),
+            )?;
+
+            match waitpid(pid, None)? {
+                WaitStatus::Stopped(_, SIGTRAP) => {
+                    tracing::debug!(pid = format_args!("{pid}"), "syscall waiting for");
+                    break;
+                }
+                WaitStatus::Stopped(_, sig) => {
+                    let debug_regs = ptrace::getregs(pid)?;
+
+                    if debug_regs.rip == trap_addr {
+                        tracing::warn!(?sig, rip = %Hex(debug_regs.rip), "deferring incidental signal, call completed");
+                        self.guard.defer_signal(sig);
+                        break;
+                    }
+
+                    if matches!(
+                        sig,
+                        Signal::SIGSEGV | Signal::SIGABRT | Signal::SIGILL | Signal::SIGBUS
+                    ) {
+                        let siginfo = ptrace::getsiginfo(pid)?;
+                        let si_addr_info = unsafe { siginfo.si_addr() as u64 };
+                        tracing::error!(
+                            pid = pid.as_raw(),
+                            si_addr_info,
+                            debug_regs.rax,
+                            debug_regs.rip,
+                            debug_regs.rsp,
+                            ?sig,
+                            "unexpected wait status during syscall"
+                        );
+                        return Err(io::Error::other(UnexpectedWaitStatus {
+                            status: WaitStatus::Stopped(pid, sig),
+                        }));
+                    }
+
+                    tracing::warn!(?sig, rip = %Hex(debug_regs.rip), "deferring unrelated signal, continuing wait");
+                    self.guard.defer_signal(sig);
+                }
+                other => {
+                    let siginfo = ptrace::getsiginfo(pid)?;
+                    let debug_regs = ptrace::getregs(pid).inspect_err(
+                |e| tracing::error!(error = %e, "ASMInjector::call waitpid debug regs get failed"),
+            )?;
+                    let si_addr_info = unsafe { siginfo.si_addr() as u64 };
+                    tracing::error!(pid = pid.as_raw(), si_addr_info, debug_regs.rax, debug_regs.rip, debug_regs.rsp, status = ?other, "unexpected wait status during syscall");
+                    return Err(io::Error::other(UnexpectedWaitStatus { status: other }));
+                }
             }
         }
 
@@ -141,7 +269,8 @@ impl SyscallInjector {
         if (-4095..0).contains(&ret) {
             tracing::error!(
                 pid = pid.as_raw(),
-                regs.rax,
+                regs.rip = %Hex(regs.rip),
+                regs.rax = %Hex(regs.rax),
                 ret,
                 "remote syscall returned error"
             );
@@ -149,7 +278,8 @@ impl SyscallInjector {
         } else {
             tracing::debug!(
                 pid = pid.as_raw(),
-                regs.rax,
+                regs.rip = %Hex(regs.rip),
+                regs.rax = %Hex(regs.rax),
                 ret,
                 "remote syscall successful"
             );
@@ -216,7 +346,7 @@ impl SyscallInjector {
 }
 
 #[cfg(target_arch = "x86_64")]
-impl Drop for SyscallInjector {
+impl Drop for ASMInjector {
     fn drop(&mut self) {
         self.fake_drop(false, false);
     }

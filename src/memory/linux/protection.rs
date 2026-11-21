@@ -1,6 +1,6 @@
 use crate::linux::page::Page;
 use crate::linux::platform::ProcessPlatform;
-use crate::linux::trace::{InputRegisters, SyscallInjector};
+use crate::linux::trace::{ASMInjector, InputRegisters};
 use crate::types::{Address, ProtectionType, address_align_to_page_down};
 use libc::{PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE};
 use nix::unistd::Pid;
@@ -20,19 +20,6 @@ pub fn match_protection(p: ProtectionType) -> i32 {
     }
 }
 
-pub fn protection_to_string<'a>(protection: ProtectionType) -> &'a str {
-    match protection {
-        PAGE_NOACCESS => "PAGE_NOACCESS",
-        PAGE_EXECUTE => "PAGE_EXECUTE",
-        PAGE_EXECUTE_READ => "PAGE_EXECUTE_READ",
-        PAGE_EXECUTE_READWRITE => "PAGE_EXECUTE_READWRITE",
-        PAGE_READONLY => "PAGE_READONLY",
-        PAGE_READWRITE => "PAGE_READWRITE",
-        UNKNOWN => "UNKNOWN",
-        //_ => { return Err(io::Error::new( io::ErrorKind::InvalidInput, "failed to convert protectiontype to string: unknown flag provided",)); }
-    }
-}
-
 impl ProcessPlatform {
     pub fn query_address_protection(&self, address: u64) -> io::Result<ProtectionType> {
         let page: Page = self.get_page_from_address(address)?;
@@ -46,7 +33,7 @@ impl ProcessPlatform {
         protection: ProtectionType,
     ) -> io::Result<()> {
         let prot = match_protection(protection) as u64;
-        let injector = SyscallInjector::new(Pid::from_raw(self.pid))?;
+        let injector = ASMInjector::new(Pid::from_raw(self.pid), false)?;
         for addr in addresses {
             let address = address_align_to_page_down(*addr);
             tracing::debug!(self.pid, "protect_memory called mprotect on:");
@@ -60,7 +47,7 @@ impl ProcessPlatform {
                 r8: 0,
                 ..Default::default()
             };
-            match injector.syscall(new_regs) {
+            match injector.call(new_regs, false) {
                 Ok(ret) if ret < 0 => {
                     tracing::error!(
                         addr = format_args!("{addr:#x}"),

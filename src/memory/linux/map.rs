@@ -1,12 +1,12 @@
 use crate::formatter::Hex;
 use crate::linux::page::{Page, page_size};
 use crate::linux::platform::ProcessPlatform;
-use crate::linux::protection::protection_to_string;
 use crate::process::Process;
 use crate::types::{Address, AddyRange, ProtectionType, address_align_to_page_down};
+use std::path::Path;
 use std::{fmt, fs, io};
 
-const SPECIAL_REGIONS: [&str; 7] = [
+pub const SPECIAL_REGIONS: [&str; 7] = [
     "[vvar]",
     "[vvar_vclock]",
     "[vdso]",
@@ -31,7 +31,7 @@ pub struct MapEntry {
 
 impl fmt::Display for MapEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let protectiontype = protection_to_string(self.protection_flag);
+        let protectiontype = self.protection_flag.to_string();
 
         write!(
             f,
@@ -44,6 +44,59 @@ impl fmt::Display for MapEntry {
                 self.module_name.as_str()
             },
         )
+    }
+}
+
+pub fn maps_loaded(p: &ProcessPlatform, lib: &str, timeout: std::time::Duration) -> io::Result<()> {
+    let is_lib = |m: &str| {
+        Path::new(m)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_prefix(lib))
+            .map_or(false, |rest| {
+                (rest.starts_with('.') || rest.starts_with('-')) && !m.ends_with(" (deleted)")
+            })
+    };
+
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let regions = p.get_all_regions()?;
+        let found = regions.iter().find(|r| is_lib(&r.module_name));
+
+        if let Some(region) = found {
+            let non_empty = fs::metadata(&region.module_name)
+                .map(|m| m.len() > 0)
+                .unwrap_or(false);
+            if non_empty {
+                return Ok(());
+            }
+        }
+
+        if std::time::Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("{lib} did not appear (or was empty) in target process within {timeout:?}"),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+pub fn process_ready(p: &ProcessPlatform, timeout: std::time::Duration) -> io::Result<()> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if let Ok(regions) = p.get_all_regions() {
+            if !regions.is_empty() {
+                return Ok(());
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("process did not become ready within {timeout:?}"),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
 
@@ -69,10 +122,8 @@ impl MapEntry {
         self.addresses.contains(address)
     }
 
-    /* TODO: finish */
-    pub fn get_pages(&self) -> Option<Page> {
+    pub fn get_pages(&self) -> io::Result<Vec<Page>> {
         let step = page_size();
-
         if !self.get_size().is_multiple_of(step) {
             tracing::warn!(
                 range = %self.addresses,
@@ -89,25 +140,23 @@ impl MapEntry {
             "MapEntry::pages iterating"
         );
 
-        let page = self.addresses.step_by(step as usize);
+        let end = self.addresses.end;
 
-        // Some(Page {
-        //     addresses: AddyRange {
-        //         start: self.addresses.start,
-        //         end: self.addresses.end,
-        //     },
-        //     //self.index_in_region,
-        //     region: self.clone(),
-        // })
+        let pages = self
+            .addresses
+            .step_by(step as usize)
+            .enumerate()
+            .map(|(index, start)| Page {
+                addresses: AddyRange {
+                    start,
+                    end: (start + step).min(end),
+                },
+                index_in_region: index,
+                region: self.clone(),
+            })
+            .collect();
 
-        Some(Page {
-            addresses: AddyRange {
-                start: 0x0,
-                end: 0x0,
-            },
-            index_in_region: 1usize,
-            region: self.clone(),
-        })
+        Ok(pages)
     }
 
     pub fn page_at(&self, address: Address) -> Option<Page> {
@@ -126,6 +175,7 @@ impl MapEntry {
         let start_address = aligned.max(self.addresses.start);
         let end_address = (aligned + size).min(self.addresses.end);
 
+        /* bugged */
         let index_in_region = ((start_address - self.addresses.start) / size) as usize;
 
         tracing::trace!(
@@ -216,10 +266,11 @@ fn parse_permissions(perms: &str, line: &str) -> io::Result<(ProtectionType, boo
         }
     };
 
+    let p = protection.to_string();
     tracing::trace!(
         permission = perms,
         shared = shared,
-        protection = protection_to_string(protection),
+        protection = p,
         "parse_permissions ok"
     );
 
@@ -235,6 +286,22 @@ fn parse_dev(dev: &str, line: &str) -> io::Result<(u32, u32)> {
     Ok((major, minor))
 }
 
+/*
+    we have to handle dlls (wine/proton mappings) a bit differently due to how they're loaded
+    for some reason wine likes to map the module header? with its path and then map the rest anonymously
+    example:
+
+    6ffff5420000-6ffff5421000 r--p 00000000 08:02 108550771                  /home/mvayk/.local/share/Steam/steamapps/common/Counter-Strike Source/cstrike/bin/x64/server.dll
+    6ffff5421000-6ffff5883000 r-xp 00000000 00:00 0
+    6ffff5883000-6ffff5a72000 r--p 00000000 00:00 0
+    6ffff5a72000-6ffff5c4e000 rw-p 00000000 00:00 0
+    6ffff5c4e000-6ffff5cf8000 r--p 00000000 00:00 0
+    6ffff5d10000-6ffff5d11000 r--p 00000000 08:02 108550755                  /home/mvayk/.local/share/Steam/steamapps/common/Counter-Strike Source/cstrike/bin/x64/client.dll
+    6ffff5d11000-6ffff60f1000 r-xp 00000000 00:00 0
+    6ffff60f1000-6ffff62b3000 r--p 00000000 00:00 0
+    6ffff62b3000-6ffff63f0000 rw-p 00000000 00:00 0
+    6ffff63f0000-6ffff648e000 r--p 00000000 00:00 0
+*/
 fn parse_line(line: &str, pid: i32) -> io::Result<MapEntry> {
     let mut it = line.splitn(6, ' ');
 
@@ -337,15 +404,25 @@ impl ProcessPlatform {
                 e
             })?;
 
+            let p = entry.protection_flag.to_string();
             tracing::trace!(
                 pid = self.pid,
                 line_number,
                 range = %entry.addresses,
-                perms = protection_to_string(entry.protection_flag),
+                perms = p,
                 module = entry.module_name,
                 "get_all_regions read line"
             );
             regions.push(entry);
+        }
+
+        use crate::linux::wine_map::attribute_wine_modules;
+        if let Err(err) = attribute_wine_modules(&mut regions, self.pid) {
+            tracing::warn!(
+                pid = self.pid,
+                error = %err,
+                "get_all_regions could not attribute wine modules"
+            );
         }
 
         if regions.is_empty() {

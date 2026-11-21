@@ -2,18 +2,17 @@ use crate::memory::process::Process;
 use std::ops::Range;
 
 #[cfg(target_os = "linux")]
-pub struct Module<'a> {
-    pub name: String,
-    pub process: &'a Process,
-    pub address: AddyRange,
-}
+use crate::memory::linux::module::ModuleP;
 
 #[cfg(target_os = "windows")]
-pub struct Module<'a> {
+use crate::memory::windows::module::ModuleP;
+
+/* :\ lifetime hell */
+pub struct Module<'a, 'b> {
     pub name: String,
-    pub handle: winapi::shared::minwindef::HMODULE,
     pub process: &'a Process,
-    pub address: AddyRange,
+    pub inner: ModuleP<'b>,
+    pub addresses: AddyRange,
 }
 
 #[allow(non_camel_case_types)]
@@ -28,9 +27,44 @@ pub enum ProtectionType {
     UNKNOWN,                /* -w-s */
 }
 
+impl ProtectionType {
+    pub fn is_readable(&self) -> bool {
+        matches!(
+            self,
+            Self::PAGE_EXECUTE_READ
+                | Self::PAGE_EXECUTE_READWRITE
+                | Self::PAGE_READONLY
+                | Self::PAGE_READWRITE
+        )
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::PAGE_NOACCESS => String::from("PAGE_NOACCESS"),
+            Self::PAGE_EXECUTE => String::from("PAGE_EXECUTE"),
+            Self::PAGE_EXECUTE_READ => String::from("PAGE_EXECUTE_READ"),
+            Self::PAGE_EXECUTE_READWRITE => String::from("PAGE_EXECUTE_READWRITE"),
+            Self::PAGE_READONLY => String::from("PAGE_READONLY"),
+            Self::PAGE_READWRITE => String::from("PAGE_READWRITE"),
+            Self::UNKNOWN => String::from("UNKNOWN"),
+            //_ => { return Err(io::Error::new( io::ErrorKind::InvalidInput, "failed to convert protectiontype to string: unknown flag provided",)); }
+        }
+    }
+
+    /* TODO: implement protection types more robustly */
+    pub fn is_writable(&self) -> bool {
+        matches!(
+            self,
+            Self::PAGE_READWRITE
+               // | Self::PAGE_WRITECOPY
+               | Self::PAGE_EXECUTE_READWRITE // | Self::PAGE_EXECUTE_WRITECOPY
+        )
+    }
+}
+
 pub type Address = u64;
 
-const PAGE_SIZE: u64 = 0x4096;
+const PAGE_SIZE: u64 = 0x1000;
 
 pub fn address_align_to_page_down(address: Address) -> Address {
     address & !(PAGE_SIZE - 1)

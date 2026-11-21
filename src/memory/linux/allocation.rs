@@ -5,14 +5,14 @@ use crate::{
     linux::{
         platform::ProcessPlatform,
         protection::match_protection,
-        trace::{InputRegisters, SyscallInjector},
+        trace::{ASMInjector, InputRegisters},
     },
     types::{Address, ProtectionType},
 };
 
 impl ProcessPlatform {
     pub fn allocate_memory(&self) -> io::Result<Address> {
-        let injector = SyscallInjector::new(Pid::from_raw(self.pid))?;
+        let injector = ASMInjector::new(Pid::from_raw(self.pid), false)?;
 
         let prot = match_protection(ProtectionType::PAGE_EXECUTE_READWRITE) as u64;
         let new_regs = InputRegisters {
@@ -26,7 +26,7 @@ impl ProcessPlatform {
             ..Default::default()
         };
 
-        match injector.syscall(new_regs) {
+        match injector.call(new_regs, false) {
             Ok(ret) if ret < 0 => {
                 tracing::error!(ret, "allocate_memory failed");
                 Err(io::Error::from_raw_os_error(-ret as i32))

@@ -14,10 +14,10 @@ pub fn page_size() -> u64 {
         } else {
             tracing::warn!(
                 returned = size,
-                fallback = 0x4096,
-                "sysconf(_SC_PAGESIZE) failed, falling back to 0x4096"
+                fallback = 0x1000,
+                "sysconf(_SC_PAGESIZE) failed, falling back to 0x1000"
             );
-            0x4096
+            0x1000
         }
     })
 }
@@ -30,19 +30,6 @@ pub struct Page {
 }
 
 impl Page {
-    pub fn get_size(&self) -> u64 {
-        self.addresses.end - self.addresses.start
-    }
-
-    pub fn contains(&self, address: Address) -> bool {
-        self.addresses.contains(address)
-    }
-
-    pub fn offset_of(&self, address: Address) -> Option<u64> {
-        self.contains(address)
-            .then(|| address - self.addresses.start)
-    }
-
     /* pages inherit a regions protection flags */
     pub fn get_protection_flag(&self) -> ProtectionType {
         self.region.protection_flag

@@ -1,17 +1,16 @@
 use bytemuck::Pod;
+use std::io::{self};
 
 use crate::{
     formatter::Hex,
     types::{Address, Module, ProtectionType},
 };
 
-use std::io::{self};
-
 #[cfg(target_os = "windows")]
 use crate::memory::windows::platform;
 
 #[cfg(target_os = "linux")]
-use crate::memory::linux::platform;
+use crate::{linux::module::ModuleP, memory::linux::platform};
 
 pub struct Process {
     pub pid: i32,
@@ -25,23 +24,14 @@ impl Process {
         Ok(Process { pid, inner })
     }
 
-    pub fn get_module(&self, module_name: &str) -> io::Result<Module<'_>> {
+    pub fn get_module(&self, module_name: &str) -> io::Result<Module<'_, '_>> {
         let module_platform = self.inner.get_module(module_name)?;
 
-        /* EW */
-        #[cfg(target_os = "linux")]
         return Ok(Module {
             name: module_platform.name.to_string(),
             process: self,
-            address: module_platform.addresses,
-        });
-
-        #[cfg(target_os = "windows")]
-        return Ok(Module {
-            name: module_platform.name.to_string(),
-            handle: module_platform.handle,
-            process: self,
-            address: module_platform.addresses,
+            addresses: module_platform.addresses,
+            inner: module_platform,
         });
     }
 
@@ -62,6 +52,10 @@ impl Process {
 
     pub fn write_memory<T: Copy>(&self, address: Address, data: T) -> io::Result<()> {
         self.inner.write_memory(address, &data)
+    }
+
+    pub fn query_address_protection(&self, address: Address) -> io::Result<ProtectionType> {
+        self.inner.query_address_protection(address)
     }
 
     /* TODO: signature scanning, protect memory, allocate memory, free memory, so injection */

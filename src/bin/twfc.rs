@@ -9,7 +9,7 @@ pub fn main() -> io::Result<()> {
     println!("PID: {}", process.pid);
 
     let module = process.get_module(process_name)?;
-    let module_base = module.address.start;
+    let module_base = module.addresses.start;
     println!("base: {:x}", module_base);
 
     /* tfoc fps unlocker thx for magical address */

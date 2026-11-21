@@ -21,6 +21,14 @@ fn get_module_path(pid: i32, module_name: &str) -> io::Result<String> {
             None => continue,
         };
 
+        use crate::linux::map::SPECIAL_REGIONS;
+        if SPECIAL_REGIONS
+            .iter()
+            .any(|region| module_name.contains(region))
+        {
+            return Ok(module_name.to_string());
+        }
+
         if !path.starts_with('/') {
             continue;
         }

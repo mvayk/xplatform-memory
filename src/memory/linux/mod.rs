@@ -1,4 +1,6 @@
+pub mod address;
 pub mod allocation;
+pub mod bitness;
 pub mod load;
 pub mod map;
 pub mod module;
@@ -9,3 +11,4 @@ pub mod protection;
 pub mod readwrite;
 pub mod seccomp;
 pub mod trace;
+pub mod wine_map;

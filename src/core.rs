@@ -6,9 +6,17 @@
 */
 
 use crate::formatter;
-use std::{io, path::PathBuf, sync::OnceLock};
+use std::sync::OnceLock;
 
 static INITIALIZED: OnceLock<()> = OnceLock::new();
+
+pub fn get_dll_path() -> String {
+    #[cfg(target_os = "linux")]
+    return String::from("libxpmemtool.so");
+
+    #[cfg(target_os = "windows")]
+    return String::from("libxpmemtool.dll");
+}
 
 pub struct Xpmentool {
     log: bool,
@@ -21,12 +29,6 @@ impl Xpmentool {
         }
 
         Xpmentool { log }
-    }
-
-    pub fn get_dll_path() -> io::Result<PathBuf> {
-        let path_str = "./xpmemtool.dll";
-        let dll_path = std::path::PathBuf::from(path_str);
-        Ok(dll_path)
     }
 
     pub fn is_initialized() -> bool {

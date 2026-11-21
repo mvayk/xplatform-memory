@@ -1,26 +1,10 @@
+use crate::formatter::Hex;
 use crate::linux::platform::ProcessPlatform;
 use crate::types::Address;
 use bytemuck::Pod;
 use std::io::Error;
 use std::os::unix::fs::FileExt;
 use std::{fmt, fs, io, mem};
-
-pub struct MemData {
-    pub address: Address,
-    pub word: [u8; 8],
-}
-
-impl fmt::Display for MemData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "word {:?} at address {:#x}", (self.word), (self.address))
-    }
-}
-
-impl MemData {
-    pub fn to_u64(&self) -> u64 {
-        u64::from_le_bytes(self.word)
-    }
-}
 
 fn to_byte_slice<T: Copy>(data: &T) -> &[u8] {
     unsafe { std::slice::from_raw_parts(data as *const T as *const u8, mem::size_of::<T>()) }
@@ -86,9 +70,11 @@ impl ProcessPlatform {
         let data = to_byte_slice(data);
 
         match mem_file.write_all_at(&data, address) {
-            Ok(_) => {}
+            Ok(_) => {
+                tracing::info!("write_memory successful")
+            }
             Err(e) => {
-                tracing::warn!(addr = format_args!("{address:?}"), error = %e, "write_memory encountered an error on addr:");
+                tracing::error!(addr = format_args!("{address:?}"), error = %e, "write_memory encountered an error on addr:");
                 return Err(Error::new(
                     io::ErrorKind::Interrupted,
                     "write_memory failed to write",
@@ -112,23 +98,23 @@ impl ProcessPlatform {
         Ok(())
     }
 
-    pub fn read_memory_long(&self, addresses: &[Address]) -> io::Result<Vec<MemData>> {
+    pub fn read_memory_long(&self, addresses: &[Address], length: usize) -> io::Result<Vec<u8>> {
         let addresses: Vec<Address> = process_addresses(self, addresses)?;
         let mem_file = fs::File::open(format!("/proc/{}/mem", self.pid))?;
 
-        let mut data: Vec<MemData> = Vec::with_capacity(addresses.len());
+        let mut data: Vec<u8> = Vec::with_capacity(length + 1);
 
         for (_, &address) in addresses.iter().enumerate() {
-            let mut word = [0u8; 8];
-            let result = mem_file.read_exact_at(&mut word, address);
+            let mut bytes = vec![0u8; length];
+            let result = mem_file.read_exact_at(&mut bytes, address);
             match result {
                 Ok(_) => {
                     tracing::info!(
-                        address,
-                        read = format_args!("{word:#x?}"),
+                        address = %Hex(address),
+                        read = format_args!("{bytes:#x?}"),
                         "read_memory_long successful for address:",
                     );
-                    data.push(MemData { address, word });
+                    data.extend(bytes);
                 }
                 Err(e) => {
                     tracing::warn!(addr = format_args!("{address:?}"), error = %e, "read_memory_long encountered an error on addr:");
